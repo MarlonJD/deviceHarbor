@@ -198,16 +198,21 @@ private struct WatchPairingView: View {
     let device: CoreDevice
 
     var body: some View {
+        let watchVisible = model.devices.contains(where: { $0.platformKind == .watchOS })
         GroupBox("watchOS 27 pairing") {
             VStack(alignment: .leading, spacing: 10) {
                 Text("The Watch is reached through its paired iPhone and the Xcode 27 CoreDevice graph. A charging puck alone is not a USB data transport.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
-                Button(model.isLoadingWatchPairings ? "Reading…" : "Inspect Watch pairings") {
+                Button(
+                    model.isLoadingWatchPairings
+                        ? "Reading…"
+                        : (watchVisible ? "Inspect Watch pairings" : "Watch not visible")
+                ) {
                     model.refreshWatchPairings(for: device)
                 }
-                .disabled(model.isLoadingWatchPairings)
+                .disabled(model.isLoadingWatchPairings || !watchVisible)
 
                 if model.watchPairings.isEmpty {
                     Text("No pairing record loaded yet.")

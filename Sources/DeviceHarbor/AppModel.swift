@@ -143,6 +143,11 @@ final class AppModel: ObservableObject {
     func refreshWatchPairings(for phone: CoreDevice) {
         guard phone.platformKind == .iOS else { return }
         guard !isLoadingWatchPairings else { return }
+        guard devices.contains(where: { $0.platformKind == .watchOS }) else {
+            watchPairings = []
+            statusMessage = "No watchOS device is visible in CoreDevice yet. Pair the Watch in Xcode Device Hub with the iPhone connected, then refresh."
+            return
+        }
         isLoadingWatchPairings = true
         statusMessage = "Reading Watch pairings…"
         let client = deviceClient
