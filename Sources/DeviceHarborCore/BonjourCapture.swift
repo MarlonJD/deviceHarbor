@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public struct CapturedBonjourService: Codable, Hashable, Identifiable, Sendable {
@@ -187,6 +188,26 @@ public enum BonjourCaptureError: LocalizedError, Sendable {
     }
 }
 
+private final class BoundedCaptureProcess: @unchecked Sendable {
+    let process: Process
+
+    init(process: Process) {
+        self.process = process
+    }
+
+    func terminateIfRunning() {
+        guard process.isRunning else { return }
+        process.terminate()
+        let deadline = Date().addingTimeInterval(0.25)
+        while process.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.025)
+        }
+        if process.isRunning {
+            _ = Darwin.kill(process.processIdentifier, SIGKILL)
+        }
+    }
+}
+
 public struct BonjourCapture {
     public let executablePath: String
 
@@ -198,12 +219,12 @@ public struct BonjourCapture {
         serviceType: String,
         domain: String = "local.",
         matching: String? = nil,
-        duration: TimeInterval = 3
+        duration: TimeInterval = 5
     ) throws -> [CapturedBonjourService] {
         let process = Process()
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = ["-t", String(max(1, Int(ceil(duration)))), "-Z", serviceType, domain]
+        process.arguments = ["-Z", serviceType, domain]
         process.standardOutput = pipe
         process.standardError = pipe
 
@@ -213,7 +234,17 @@ public struct BonjourCapture {
             throw BonjourCaptureError.launchFailed(error.localizedDescription)
         }
 
+        let controller = BoundedCaptureProcess(process: process)
+        let terminator = DispatchWorkItem {
+            controller.terminateIfRunning()
+        }
+        DispatchQueue.global(qos: .utility).asyncAfter(
+            deadline: .now() + max(1, duration),
+            execute: terminator
+        )
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        terminator.cancel()
+        controller.terminateIfRunning()
         process.waitUntilExit()
 
         let output = String(decoding: data, as: UTF8.self)

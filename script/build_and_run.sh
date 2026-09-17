@@ -18,7 +18,8 @@ MODULE_CACHE="${DEVICEHARBOR_MODULE_CACHE:-/private/tmp/deviceharbor-module-cach
 CLANG_CACHE="${DEVICEHARBOR_CLANG_CACHE:-/private/tmp/deviceharbor-clang-cache}"
 
 mkdir -p "$MODULE_CACHE" "$CLANG_CACHE"
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+pkill -f "$APP_BUNDLE/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 || true
+pkill -f "/usr/bin/dns-sd -Z" >/dev/null 2>&1 || true
 
 CLANG_MODULE_CACHE_PATH="$CLANG_CACHE" \
 SWIFT_MODULECACHE_PATH="$MODULE_CACHE" \

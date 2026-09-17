@@ -280,10 +280,12 @@ struct ProfileDetailView: View {
     @State private var draft: DeviceProfile
     @State private var isCapturing = false
     @State private var captureMessage = ""
+    @State private var commonRemoteAddress = ""
 
     init(profile: DeviceProfile) {
         self.profile = profile
         _draft = State(initialValue: profile)
+        _commonRemoteAddress = State(initialValue: profile.services.first?.remoteAddress ?? "")
     }
 
     var body: some View {
@@ -318,6 +320,11 @@ struct ProfileDetailView: View {
                 }
                 TextField("Local advertised address", text: $draft.advertisedAddress)
                     .help("The Mac address advertised to Xcode; 127.0.0.1 is useful for local tests.")
+                TextField("iPhone/Watch private mesh address", text: $commonRemoteAddress)
+                    .help("Use the iPhone's Tailscale, ZeroTier, NetBird, or Bluetooth-PAN address.")
+                Button("Apply address to all services", systemImage: "arrow.down.right.and.arrow.up.left") {
+                    applyCommonRemoteAddress()
+                }
                 Text("Remote mesh address belongs to the iPhone/Watch side. The local advertised address belongs to this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -391,13 +398,15 @@ struct ProfileDetailView: View {
             Section {
                 HStack {
                     Button("Save Profile") {
+                        applyCommonRemoteAddress()
                         model.updateProfile(draft)
                     }
                     Button(model.bridgeState == .stopped ? "Start Bridge" : "Restart Bridge") {
+                        applyCommonRemoteAddress()
                         model.updateProfile(draft)
                         model.startBridge(for: draft)
                     }
-                    .disabled(!draft.isValid)
+                    .disabled(!profileWithCommonAddress.isValid)
                     if model.bridgeState != .stopped {
                         Button("Stop") {
                             model.stopBridge()
@@ -415,6 +424,21 @@ struct ProfileDetailView: View {
         .padding(28)
         .onChange(of: profile) { _, newValue in
             draft = newValue
+            commonRemoteAddress = newValue.services.first?.remoteAddress ?? ""
+        }
+    }
+
+    private var profileWithCommonAddress: DeviceProfile {
+        var value = draft
+        for index in value.services.indices where value.services[index].remoteAddress.isEmpty {
+            value.services[index].remoteAddress = commonRemoteAddress
+        }
+        return value
+    }
+
+    private func applyCommonRemoteAddress() {
+        for index in draft.services.indices {
+            draft.services[index].remoteAddress = commonRemoteAddress
         }
     }
 

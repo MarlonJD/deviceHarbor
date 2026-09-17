@@ -34,6 +34,9 @@ final class AppModel: ObservableObject {
         } catch {
             statusMessage = error.localizedDescription
         }
+        Task { @MainActor [weak self] in
+            self?.refreshDevices()
+        }
     }
 
     var selectedDevice: CoreDevice? {
@@ -212,7 +215,7 @@ final class AppModel: ObservableObject {
     }
 
     func captureLocalBonjourServices(
-        duration: TimeInterval = 2,
+        duration: TimeInterval = 5,
         completion: @escaping @MainActor (BonjourCaptureOutcome) -> Void
     ) {
         statusMessage = "Capturing local Xcode Bonjour records…"
