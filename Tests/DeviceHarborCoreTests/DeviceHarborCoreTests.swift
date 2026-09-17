@@ -175,6 +175,8 @@ final class DeviceHarborCoreTests: XCTestCase {
         let peers = try TailscaleStatusParser.parse(output)
 
         XCTAssertEqual(peers.count, 2)
+        XCTAssertTrue(peers[0].isSelf)
+        XCTAssertFalse(peers[1].isSelf)
         XCTAssertEqual(peers[1].addresses, ["100.64.0.10"])
         XCTAssertTrue(peers[1].online)
     }

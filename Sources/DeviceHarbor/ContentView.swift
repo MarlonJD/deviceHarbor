@@ -436,6 +436,11 @@ struct ProfileDetailView: View {
                         model.startBridge(for: draft)
                     }
                     .disabled(!profileWithCommonAddress.isValid)
+                    if !profileWithCommonAddress.isValid {
+                        Text(profileValidationMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     if model.bridgeState != .stopped {
                         Button("Stop") {
                             model.stopBridge()
@@ -463,6 +468,19 @@ struct ProfileDetailView: View {
             value.services[index].remoteAddress = commonRemoteAddress
         }
         return value
+    }
+
+    private var profileValidationMessage: String {
+        if draft.deviceIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Link this profile to a connected CoreDevice before starting the bridge."
+        }
+        if commonRemoteAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Resolve or enter the iPhone/Watch private address first."
+        }
+        if draft.services.isEmpty {
+            return "Add at least one Bonjour service before starting the bridge."
+        }
+        return "Complete each Bonjour service with an instance name, service type, address, and port."
     }
 
     private func applyCommonRemoteAddress() {

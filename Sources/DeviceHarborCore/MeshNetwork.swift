@@ -5,12 +5,14 @@ public struct MeshPeer: Codable, Hashable, Sendable {
     public let dnsName: String
     public let addresses: [String]
     public let online: Bool
+    public let isSelf: Bool
 
-    public init(name: String, dnsName: String, addresses: [String], online: Bool) {
+    public init(name: String, dnsName: String, addresses: [String], online: Bool, isSelf: Bool = false) {
         self.name = name
         self.dnsName = dnsName
         self.addresses = addresses
         self.online = online
+        self.isSelf = isSelf
     }
 }
 
@@ -68,9 +70,10 @@ public struct MeshEndpointResolver: @unchecked Sendable {
             }
             let peers = try TailscaleStatusParser.parse(result.output)
             let normalizedQuery = query.lowercased()
+            let onlinePeers = peers.filter { $0.online && !$0.isSelf }
             guard let peer = peers.first(where: {
                 $0.online && [ $0.name, $0.dnsName ].contains(where: { $0.lowercased().contains(normalizedQuery) })
-            }) else {
+            }) ?? (onlinePeers.count == 1 ? onlinePeers.first : nil) else {
                 throw MeshNetworkError.peerNotFound(query)
             }
             guard let address = peer.addresses.first(where: { $0.contains(".") || $0.contains(":") }) else {
@@ -115,24 +118,24 @@ public enum TailscaleStatusParser {
         }
 
         var peers: [MeshPeer] = []
-        if let selfPeer = parsePeer(root["Self"] as? [String: Any]) {
+        if let selfPeer = parsePeer(root["Self"] as? [String: Any], isSelf: true) {
             peers.append(selfPeer)
         }
         if let rawPeers = root["Peer"] as? [String: Any] {
             for raw in rawPeers.values {
-                if let peer = parsePeer(raw as? [String: Any]) { peers.append(peer) }
+                if let peer = parsePeer(raw as? [String: Any], isSelf: false) { peers.append(peer) }
             }
         }
         return peers
     }
 
-    private static func parsePeer(_ raw: [String: Any]?) -> MeshPeer? {
+    private static func parsePeer(_ raw: [String: Any]?, isSelf: Bool) -> MeshPeer? {
         guard let raw else { return nil }
         let name = raw["HostName"] as? String ?? raw["HostInfo"] as? String ?? ""
         let dnsName = raw["DNSName"] as? String ?? ""
         let addresses = raw["TailscaleIPs"] as? [String] ?? []
         let online = raw["Online"] as? Bool ?? true
         guard !name.isEmpty || !dnsName.isEmpty else { return nil }
-        return MeshPeer(name: name, dnsName: dnsName, addresses: addresses, online: online)
+        return MeshPeer(name: name, dnsName: dnsName, addresses: addresses, online: online, isSelf: isSelf)
     }
 }

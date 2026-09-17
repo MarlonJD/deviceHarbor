@@ -1,5 +1,4 @@
 import Foundation
-import Network
 
 public enum TCPReachabilityOutcome: Sendable {
     case reachable
@@ -13,53 +12,60 @@ public struct TCPReachabilityTester: @unchecked Sendable {
         guard !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .failed("Enter a private address first.")
         }
-        guard let endpointPort = NWEndpoint.Port(rawValue: port), port > 0 else {
+        guard port > 0 else {
             return .failed("Enter a valid service port first.")
         }
 
-        let connection = NWConnection(host: NWEndpoint.Host(address), port: endpointPort, using: .tcp)
-        let state = ProbeState()
-        connection.stateUpdateHandler = { newState in
-            switch newState {
-            case .ready:
-                state.finish(.reachable)
-            case .failed(let error):
-                state.finish(.failed(error.localizedDescription))
-            case .cancelled:
-                state.finish(.failed("Connection cancelled."))
-            default:
-                break
+        let timeoutSeconds = max(1, Int(timeout.rounded(.up)))
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/nc")
+        process.arguments = [
+            "-v",
+            "-z",
+            "-G", String(timeoutSeconds),
+            "-w", String(timeoutSeconds),
+            address,
+            String(port)
+        ]
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return .failed("Could not start the TCP probe: \(error.localizedDescription)")
+        }
+
+        let output = String(
+            data: outputPipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        ) ?? ""
+        let detail = output.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard process.terminationStatus == 0 else {
+            let lowercased = detail.lowercased()
+            if lowercased.contains("connection refused") {
+                return .failed(
+                    "Connection refused at \(address):\(port). The host is reachable, but this CoreDevice service is not listening there."
+                )
             }
+            if lowercased.contains("timed out") || lowercased.contains("timeout") {
+                return .failed(
+                    "Timed out reaching \(address):\(port). Check the private route and whether the service is exposed."
+                )
+            }
+            if lowercased.contains("no route") || lowercased.contains("network is unreachable") {
+                return .failed("No route to \(address):\(port). Check the private network connection.")
+            }
+            if !detail.isEmpty {
+                return .failed("Could not reach \(address):\(port): \(detail)")
+            }
+            return .failed("Could not reach \(address):\(port).")
         }
-        connection.start(queue: DispatchQueue.global(qos: .utility))
-        if state.semaphore.wait(timeout: .now() + timeout) == .timedOut {
-            connection.cancel()
-            return .failed("Timed out reaching \(address):\(port). Check the private route.")
-        }
-        connection.cancel()
-        return state.outcome ?? .failed("No reachability result was produced.")
-    }
-}
 
-private final class ProbeState: @unchecked Sendable {
-    let semaphore = DispatchSemaphore(value: 0)
-    private let lock = NSLock()
-    private var storedOutcome: TCPReachabilityOutcome?
-
-    var outcome: TCPReachabilityOutcome? {
-        lock.lock()
-        defer { lock.unlock() }
-        return storedOutcome
-    }
-
-    func finish(_ outcome: TCPReachabilityOutcome) {
-        lock.lock()
-        guard storedOutcome == nil else {
-            lock.unlock()
-            return
-        }
-        storedOutcome = outcome
-        lock.unlock()
-        semaphore.signal()
+        return .reachable
     }
 }

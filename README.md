@@ -32,6 +32,13 @@ RemotePairing records, dynamic CoreDevice ports, native Xcode Run Destinations,
 breakpoints, LLDB, and Watch installation/debugging. Until that pass exists,
 the relay is candidate-only.
 
+The private-network path must expose the CoreDevice service ports in addition
+to making the device address reachable. A validation run reached the iPhone
+over Tailscale but received `Connection refused` from all captured Xcode service
+ports. DeviceHarbor reports that distinction; Bonjour proxying and TCP relay
+configuration cannot make an iPhone-side CoreDevice service listen on a new
+interface by themselves.
+
 An Apple Watch charging puck provides power; it is not treated as a direct USB
 developer transport. DeviceHarbor expects the Watch to be paired with its
 iPhone and visible through Xcode 27’s CoreDevice graph, with Bluetooth/Wi-Fi
