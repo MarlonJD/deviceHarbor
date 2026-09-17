@@ -323,6 +323,9 @@ struct ProfileDetailView: View {
                         Text(provider.displayName).tag(provider)
                     }
                 }
+                Text(draft.meshProvider.guidance)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 TextField("Local advertised address", text: $draft.advertisedAddress)
                     .help("The Mac address advertised to Xcode; 127.0.0.1 is useful for local tests.")
                 TextField("iPhone/Watch private mesh address", text: $commonRemoteAddress)

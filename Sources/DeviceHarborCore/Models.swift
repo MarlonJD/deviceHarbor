@@ -28,6 +28,19 @@ public enum MeshProvider: String, Codable, CaseIterable, Sendable {
         case .manual: "Manual IP"
         }
     }
+
+    public var guidance: String {
+        switch self {
+        case .tailscale:
+            "Requires Tailscale on both Mac and iPhone; DeviceHarbor can resolve an online peer when the Mac CLI is available."
+        case .zeroTier:
+            "Requires ZeroTier on both devices; enter the iPhone's private address manually."
+        case .netbird:
+            "Requires NetBird on both devices; enter the iPhone's private address manually."
+        case .manual:
+            "No overlay app is required. Enter any IP reachable from this Mac, including a same-LAN or Bluetooth-PAN address."
+        }
+    }
 }
 
 public struct CoreDevice: Codable, Hashable, Identifiable, Sendable {

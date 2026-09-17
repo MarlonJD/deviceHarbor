@@ -73,5 +73,17 @@ device tooling. The relay does not open a public listener by default, does not
 provide a cloud relay, and does not disable macOS firewall or network privacy
 controls.
 
+### Transport choices
+
+- `Tailscale`: install and sign in on both Mac and iPhone; DeviceHarbor can
+  resolve the iPhone peer when the Mac CLI is available.
+- `ZeroTier` and `NetBird`: install on both devices and enter the assigned
+  iPhone address manually.
+- `Manual IP`: no overlay app is required, but the address must already be
+  reachable from the Mac. Bluetooth PAN, a shared private LAN, and a USB
+  network interface are possible candidates. This does not make Bluetooth a
+  native Xcode transport; Bonjour is only re-advertised locally and the actual
+  CoreDevice traffic remains TCP/IP.
+
 The app is not affiliated with Apple. Xcode, iPhone, Apple Watch, and related
 marks belong to Apple Inc.
