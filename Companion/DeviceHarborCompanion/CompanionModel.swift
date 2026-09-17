@@ -20,6 +20,7 @@ final class CompanionModel {
     var relayHost = ""
     var relayPortText = "49153"
     var status = "Starting discovery…"
+    var companionStatus = "Searching for Mac companion…"
     var networkExtensionPrepared = false
     var companionConnectionReady = false
 
@@ -89,7 +90,7 @@ final class CompanionModel {
                 if shouldConnectToFirstMac, let firstMac = self.discoveredMacs.first {
                     self.select(firstMac)
                 } else if !self.discoveredMacs.isEmpty && self.selectedMacID != nil && !self.companionConnectionReady {
-                    self.status = "Mac companion found. Enter the pairing code."
+                    self.companionStatus = "Mac companion found. Tap the Mac row to connect."
                 }
             }
         }
@@ -99,32 +100,34 @@ final class CompanionModel {
 
     func select(_ mac: DiscoveredMac) {
         selectedMacID = mac.id
+        companionConnectionReady = false
+        companionStatus = "Connecting to \(mac.name)…"
         companionClient.onStateChange = { [weak self] state in
             Task { @MainActor in
                 guard let self else { return }
                 switch state {
                 case .stopped:
                     self.companionConnectionReady = false
-                    self.status = "Connection closed."
+                    self.companionStatus = "Connection closed."
                 case .failed(let message):
                     self.companionConnectionReady = false
-                    self.status = "Connection failed: \(message)"
+                    self.companionStatus = "Connection failed: \(message)"
                 case .connecting:
                     self.companionConnectionReady = false
-                    self.status = "Connecting to Mac companion…"
+                    self.companionStatus = "Connecting to Mac companion…"
                 case .waitingForPair:
                     self.companionConnectionReady = true
-                    self.status = "Connected to Mac companion. Enter the pairing code."
+                    self.companionStatus = "Connected to Mac companion. Enter the pairing code."
                 case .paired:
                     self.companionConnectionReady = true
-                    self.status = "Paired with Mac companion."
+                    self.companionStatus = "Paired with Mac companion."
                 }
             }
         }
         companionClient.onMacHello = { [weak self] _, name in
             Task { @MainActor in
                 self?.companionConnectionReady = true
-                self?.status = "Connected to \(name). Enter the pairing code."
+                self?.companionStatus = "Connected to \(name). Enter the pairing code."
             }
         }
         companionClient.connect(to: mac.endpoint)
@@ -155,6 +158,7 @@ final class CompanionModel {
             accessToken: pairingCode
         )
         companionConnectionReady = false
+        companionStatus = "Connecting to DeviceHarbor relay \(host):\(portValue)…"
         status = "Connecting to DeviceHarbor relay \(host):\(portValue)…"
     }
 

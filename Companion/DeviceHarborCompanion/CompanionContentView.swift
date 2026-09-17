@@ -48,6 +48,12 @@ struct CompanionContentView: View {
                         }
                     }
 
+                    Label(
+                        model.companionStatus,
+                        systemImage: model.companionConnectionReady ? "checkmark.circle.fill" : "link"
+                    )
+                    .foregroundStyle(model.companionConnectionReady ? .green : .secondary)
+
                     SecureField("Pairing code", text: model.pairingCodeBinding)
                         .keyboardType(.numberPad)
                         .textContentType(.oneTimeCode)
