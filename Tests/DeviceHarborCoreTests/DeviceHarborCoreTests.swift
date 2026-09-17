@@ -84,7 +84,7 @@ final class DeviceHarborCoreTests: XCTestCase {
         XCTAssertEqual(devices[0].udid, "PHONE-UDID")
         XCTAssertEqual(devices[0].connectionState, "unavailable")
         XCTAssertEqual(devices[0].developerModeStatus, "enabled")
-        XCTAssertEqual(devices[0].connectivityAdvice, "Paired, but no CoreDevice tunnel is reachable. Connect the phone over USB or the configured private network.")
+        XCTAssertEqual(devices[0].connectivityAdvice, "Paired, but no CoreDevice tunnel is reachable. Connect the phone over USB, or establish Xcode wireless debugging on the same Wi-Fi before using the configured private network.")
         XCTAssertEqual(devices[1].platformKind, .watchOS)
         XCTAssertEqual(devices[1].name, "Apple Watch")
     }
@@ -154,6 +154,29 @@ final class DeviceHarborCoreTests: XCTestCase {
         XCTAssertEqual(services[0].remotePort, 49152)
         XCTAssertEqual(services[0].textRecords["platform"], "iOS")
         XCTAssertEqual(services[0].textRecords["paired"], "")
+    }
+
+    func testMatchesBonjourServiceByDeviceIdentityAndRejectsDeviceHarborProxy() {
+        let service = CapturedBonjourService(
+            instanceName: "ncm",
+            serviceType: "_remoted._tcp",
+            domain: "local.",
+            remoteHost: "Burak-iPhoneu.local.",
+            remotePort: 51715,
+            textRecords: ["identifier": "02329A9F-84C9-5499-9EBF-074EFCB45F7C"]
+        )
+        let proxy = CapturedBonjourService(
+            instanceName: "ncm",
+            serviceType: "_remoted._tcp",
+            domain: "local.",
+            remoteHost: "DeviceHarbor-TEST.local.",
+            remotePort: 51715
+        )
+
+        XCTAssertTrue(service.matches(any: ["Burak iPhone’u"]))
+        XCTAssertTrue(service.matches(any: ["02329A9F-84C9-5499-9EBF-074EFCB45F7C"]))
+        XCTAssertFalse(service.isGeneratedByDeviceHarbor)
+        XCTAssertTrue(proxy.isGeneratedByDeviceHarbor)
     }
 
     func testParsesWatchPairingJSON() throws {

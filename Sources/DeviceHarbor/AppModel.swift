@@ -278,6 +278,7 @@ final class AppModel: ObservableObject {
     }
 
     func captureLocalBonjourServices(
+        matching identities: [String] = [],
         duration: TimeInterval = 5,
         completion: @escaping @MainActor (BonjourCaptureOutcome) -> Void
     ) {
@@ -285,12 +286,13 @@ final class AppModel: ObservableObject {
         Task { [weak self] in
             let outcome = await Task.detached(priority: .userInitiated) {
                 do {
-                    var services: [CapturedBonjourService] = []
-                    for serviceType in BonjourServiceFamilies.xcode27 {
-                        services.append(contentsOf: try BonjourCapture().capture(
-                            serviceType: serviceType,
-                            duration: duration
-                        ))
+                        var services: [CapturedBonjourService] = []
+                        for serviceType in BonjourServiceFamilies.xcode27 {
+                            services.append(contentsOf: try BonjourCapture().capture(
+                                serviceType: serviceType,
+                                matching: identities,
+                                duration: duration
+                            ))
                     }
                     return BonjourCaptureOutcome.success(services)
                 } catch {
@@ -301,7 +303,7 @@ final class AppModel: ObservableObject {
             switch outcome {
             case .success(let services):
                 statusMessage = services.isEmpty
-                    ? "No local Xcode Bonjour records were captured."
+                    ? "No matching wireless-debug Bonjour records were captured. Enable wireless debugging while the phone is on the same Wi-Fi, then try again."
                     : "Captured \(services.count) local Bonjour service(s)."
             case .failure(let message):
                 statusMessage = message

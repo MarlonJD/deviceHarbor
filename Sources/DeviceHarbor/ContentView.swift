@@ -405,16 +405,19 @@ struct ProfileDetailView: View {
                     Button(isCapturing ? "Capturing…" : "Capture local records", systemImage: "dot.radiowaves.left.and.right") {
                         isCapturing = true
                         let remoteAddress = draft.services.first?.remoteAddress ?? ""
-                        model.captureLocalBonjourServices { outcome in
+                        let identities = model.devices.first(where: { $0.identifier == draft.deviceIdentifier })
+                            .map { [$0.identifier, $0.udid, $0.name] + $0.potentialHostnames }
+                            ?? (draft.deviceIdentifier.isEmpty ? [] : [draft.deviceIdentifier])
+                        model.captureLocalBonjourServices(matching: identities) { outcome in
                             isCapturing = false
                             switch outcome {
                             case .success(let services):
                                 guard !services.isEmpty else {
-                                    captureMessage = "No matching records found on this local network."
+                                    captureMessage = "No matching wireless-debug records found. Pair the phone over USB while Mac and iPhone share Wi-Fi, then try again."
                                     return
                                 }
                                 draft.services = services.map { $0.makeRelayService(remoteAddress: remoteAddress) }
-                                captureMessage = "Loaded \(services.count) record(s); enter the private address if needed, then save."
+                                captureMessage = "Loaded \(services.count) verified device record(s); resolve the private address, then save."
                             case .failure(let message):
                                 captureMessage = message
                             }

@@ -38,6 +38,30 @@ public struct CapturedBonjourService: Codable, Hashable, Identifiable, Sendable 
             textRecords: textRecords
         )
     }
+
+    public var isGeneratedByDeviceHarbor: Bool {
+        remoteHost.lowercased().contains("deviceharbor-")
+    }
+
+    public func matches(any identities: [String]) -> Bool {
+        let normalizedIdentities = identities
+            .map(Self.normalizedIdentity)
+            .filter { !$0.isEmpty }
+        guard !normalizedIdentities.isEmpty else { return true }
+
+        let values = [instanceName, remoteHost]
+            + textRecords.flatMap { [$0.key, $0.value] }
+        return values
+            .map(Self.normalizedIdentity)
+            .filter { !$0.isEmpty }
+            .contains { value in
+                normalizedIdentities.contains { value.contains($0) || $0.contains(value) }
+            }
+    }
+
+    private static func normalizedIdentity(_ value: String) -> String {
+        value.lowercased().filter { $0.isLetter || $0.isNumber }
+    }
 }
 
 public enum BonjourServiceFamilies {
@@ -218,7 +242,7 @@ public struct BonjourCapture {
     public func capture(
         serviceType: String,
         domain: String = "local.",
-        matching: String? = nil,
+        matching: [String] = [],
         duration: TimeInterval = 5
     ) throws -> [CapturedBonjourService] {
         let process = Process()
@@ -252,10 +276,10 @@ public struct BonjourCapture {
             throw BonjourCaptureError.commandFailed(output.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         let services = BonjourZoneParser.parse(output, serviceType: serviceType, domain: domain)
-        guard let matching else { return services }
+            .filter { !$0.isGeneratedByDeviceHarbor }
+        guard !matching.isEmpty else { return services }
         return services.filter {
-            $0.instanceName.localizedCaseInsensitiveContains(matching)
-                || $0.remoteHost.localizedCaseInsensitiveContains(matching)
+            $0.matches(any: matching)
         }
     }
 }

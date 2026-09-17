@@ -32,7 +32,7 @@ public enum MeshProvider: String, Codable, CaseIterable, Sendable {
     public var guidance: String {
         switch self {
         case .tailscale:
-            "Requires Tailscale on both Mac and iPhone; DeviceHarbor can resolve an online peer when the Mac CLI is available."
+            "Requires Tailscale on both Mac and iPhone plus one working Xcode wireless-debug session on the same local Wi-Fi. DeviceHarbor resolves the online peer when the Mac CLI is available."
         case .zeroTier:
             "Requires ZeroTier on both devices; enter the iPhone's private address manually."
         case .netbird:
@@ -129,7 +129,7 @@ public struct CoreDevice: Codable, Hashable, Identifiable, Sendable {
         guard isPaired, !isReachable else { return nil }
         let state = connectionState.isEmpty ? tunnelState : connectionState
         guard state.caseInsensitiveCompare("unavailable") == .orderedSame else { return nil }
-        return "Paired, but no CoreDevice tunnel is reachable. Connect the phone over USB or the configured private network."
+        return "Paired, but no CoreDevice tunnel is reachable. Connect the phone over USB, or establish Xcode wireless debugging on the same Wi-Fi before using the configured private network."
     }
 }
 

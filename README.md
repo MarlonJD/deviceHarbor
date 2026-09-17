@@ -33,11 +33,12 @@ breakpoints, LLDB, and Watch installation/debugging. Until that pass exists,
 the relay is candidate-only.
 
 The private-network path must expose the CoreDevice service ports in addition
-to making the device address reachable. A validation run reached the iPhone
-over Tailscale but received `Connection refused` from all captured Xcode service
-ports. DeviceHarbor reports that distinction; Bonjour proxying and TCP relay
-configuration cannot make an iPhone-side CoreDevice service listen on a new
-interface by themselves.
+to making the device address reachable. A Tailscale ping alone is not enough:
+the iPhone must first establish Xcode wireless debugging on the local Wi-Fi
+path. A validation run that had only USB pairing reached the iPhone over
+Tailscale but received `Connection refused` from all captured Xcode service
+ports. DeviceHarbor reports that distinction and does not claim wireless-debug
+readiness until real device records are captured.
 
 An Apple Watch charging puck provides power; it is not treated as a direct USB
 developer transport. DeviceHarbor expects the Watch to be paired with its
@@ -59,15 +60,19 @@ package is the source of truth.
 
 ## Pairing and transport model
 
-1. Pair the iPhone with Xcode over USB and enable Developer Mode.
-2. Pair the Watch with its iPhone and enable Developer Mode on both devices.
-3. Capture the device’s Bonjour service records while the normal local path is
-   working.
-4. Install the same private-network client on the Mac and iPhone, then record
-   the iPhone’s private address in a DeviceHarbor profile.
-5. Start the relay. DeviceHarbor re-advertises the captured services locally and
-   forwards their TCP connections over the private network.
-6. Use Xcode’s Device Hub and `devicectl` to verify the resulting device path.
+1. Put the Mac and iPhone on the same local Wi-Fi, connect the iPhone over USB,
+   pair it with Xcode, and enable Developer Mode.
+2. Confirm Xcode wireless debugging works while the phone is still on that
+   local Wi-Fi; recent Xcode versions may enable this automatically after the
+   first pairing.
+3. Pair the Watch with its iPhone and enable Developer Mode on both devices.
+4. Capture the device’s Bonjour service records while the normal local path is
+   working and the bridge is stopped.
+5. Install and sign in to the same private-network client on the Mac and
+   iPhone, then record the iPhone’s private address in a DeviceHarbor profile.
+6. Move the iPhone to its other Wi-Fi, start the relay, and let DeviceHarbor
+   re-advertise the captured services locally while forwarding their traffic.
+7. Use Xcode’s Device Hub and `devicectl` to verify the resulting device path.
 
 The known Xcode service families are `_remotepairing._tcp`, `_remoted._tcp`,
 and `_apple-mobdev2._tcp`. Their ports and TXT records are device/session data;
