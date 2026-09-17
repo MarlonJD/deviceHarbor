@@ -52,7 +52,10 @@ struct CompanionContentView: View {
                         .keyboardType(.numberPad)
                         .textContentType(.oneTimeCode)
 
-                    Button("Pair with Mac", systemImage: "link") {
+                    Button(
+                        model.companionConnectionReady ? "Pair with Mac" : "Connect to Mac first",
+                        systemImage: "link"
+                    ) {
                         model.pair()
                     }
                     .disabled(!model.canPair)

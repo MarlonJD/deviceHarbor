@@ -84,11 +84,11 @@ final class CompanionModel {
             }
             Task { @MainActor in
                 guard let self else { return }
+                let shouldConnectToFirstMac = self.selectedMacID == nil
                 self.discoveredMacs = discovered.sorted { $0.name < $1.name }
-                if self.selectedMacID == nil {
-                    self.selectedMacID = self.discoveredMacs.first?.id
-                }
-                if !self.discoveredMacs.isEmpty && self.selectedMacID != nil {
+                if shouldConnectToFirstMac, let firstMac = self.discoveredMacs.first {
+                    self.select(firstMac)
+                } else if !self.discoveredMacs.isEmpty && self.selectedMacID != nil && !self.companionConnectionReady {
                     self.status = "Mac companion found. Enter the pairing code."
                 }
             }
