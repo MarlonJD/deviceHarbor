@@ -14,35 +14,6 @@ public enum DevicePlatform: String, Codable, CaseIterable, Sendable {
     }
 }
 
-public enum MeshProvider: String, Codable, CaseIterable, Sendable {
-    case tailscale
-    case zeroTier
-    case netbird
-    case manual
-
-    public var displayName: String {
-        switch self {
-        case .tailscale: "Tailscale"
-        case .zeroTier: "ZeroTier"
-        case .netbird: "NetBird"
-        case .manual: "Manual IP"
-        }
-    }
-
-    public var guidance: String {
-        switch self {
-        case .tailscale:
-            "Requires Tailscale on both Mac and iPhone plus one working Xcode wireless-debug session on the same local Wi-Fi. DeviceHarbor resolves the online peer when the Mac CLI is available."
-        case .zeroTier:
-            "Requires ZeroTier on both devices; enter the iPhone's private address manually."
-        case .netbird:
-            "Requires NetBird on both devices; enter the iPhone's private address manually."
-        case .manual:
-            "No overlay app is required. For Bluetooth PAN, enable Personal Hotspot on iPhone, keep iPhone Settings > Bluetooth open, and select iPhone from Mac Bluetooth; do not pair the Mac as a generic device from iPhone."
-        }
-    }
-}
-
 public struct CoreDevice: Codable, Hashable, Identifiable, Sendable {
     public let identifier: String
     public let udid: String
@@ -163,7 +134,6 @@ public struct RelayService: Codable, Hashable, Identifiable, Sendable {
     public var instanceName: String
     public var serviceType: String
     public var domain: String
-    public var remoteAddress: String
     public var remotePort: UInt16
     public var localPort: UInt16?
     public var textRecords: [String: String]
@@ -173,7 +143,6 @@ public struct RelayService: Codable, Hashable, Identifiable, Sendable {
         instanceName: String,
         serviceType: String,
         domain: String = "local.",
-        remoteAddress: String,
         remotePort: UInt16,
         localPort: UInt16? = nil,
         textRecords: [String: String] = [:]
@@ -182,7 +151,6 @@ public struct RelayService: Codable, Hashable, Identifiable, Sendable {
         self.instanceName = instanceName
         self.serviceType = serviceType
         self.domain = domain
-        self.remoteAddress = remoteAddress
         self.remotePort = remotePort
         self.localPort = localPort
         self.textRecords = textRecords
@@ -191,7 +159,6 @@ public struct RelayService: Codable, Hashable, Identifiable, Sendable {
     public var isValid: Bool {
         !instanceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && serviceType.hasPrefix("_")
-            && !remoteAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && remotePort > 0
     }
 }
@@ -201,7 +168,6 @@ public struct DeviceProfile: Codable, Hashable, Identifiable, Sendable {
     public var displayName: String
     public var deviceIdentifier: String
     public var platform: DevicePlatform
-    public var meshProvider: MeshProvider
     public var advertisedAddress: String
     public var services: [RelayService]
 
@@ -210,7 +176,6 @@ public struct DeviceProfile: Codable, Hashable, Identifiable, Sendable {
         displayName: String,
         deviceIdentifier: String,
         platform: DevicePlatform,
-        meshProvider: MeshProvider,
         advertisedAddress: String = "127.0.0.1",
         services: [RelayService]
     ) {
@@ -218,7 +183,6 @@ public struct DeviceProfile: Codable, Hashable, Identifiable, Sendable {
         self.displayName = displayName
         self.deviceIdentifier = deviceIdentifier
         self.platform = platform
-        self.meshProvider = meshProvider
         self.advertisedAddress = advertisedAddress
         self.services = services
     }

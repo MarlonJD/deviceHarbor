@@ -1,105 +1,122 @@
 # DeviceHarbor
 
-DeviceHarbor is an open-source macOS developer tool for keeping Xcode device
-connectivity usable across a private network. The first supported matrix is
-macOS 27, Xcode 27, iOS 27, and watchOS 27.
+DeviceHarbor is an open-source macOS developer tool and iPhone companion for
+carrying an Xcode 27 device session across a private DeviceHarbor transport.
+The first supported matrix is macOS 27, Xcode 27, iOS 27, and watchOS 27.
 
-The project is intentionally separate from application code. It does not
-replace Xcode, Apple signing, Developer Mode, or the device trust relationship.
-It builds on the current Xcode 27 `devicectl` surface and publishes local
-Bonjour proxy records while relaying TCP traffic to a paired device address on
-a private network such as Tailscale.
+The Mac app remains the Xcode/CoreDevice host. It captures the verified
+Bonjour records published by a physical device, re-advertises those records
+locally, and proxies each dynamic TCP service through the paired iPhone
+companion. The iPhone companion keeps the transport outbound, so the phone
+does not need to accept an unsolicited public connection.
 
-## Current status
+## Current increment
 
-The current increment provides:
+This repository currently contains:
 
 - a native SwiftUI macOS menu bar app;
 - a typed `devicectl` adapter for listing, pairing, installing, and launching;
-- a profile store that contains endpoints and Bonjour records, never pairing
-  secrets;
-- optional Tailscale peer resolution with a manual-IP fallback;
-- a TCP reachability probe before starting a relay;
-- bounded `dns-sd -Z` capture and a parser for Xcode 27 service families;
-- a TCP relay and `/usr/bin/dns-sd -P` Bonjour proxy publisher;
-- initial iPhone and Apple Watch service-model support;
-- Xcode 27 phone/Watch pairing command and JSON adapters;
-- deterministic parser, command, profile, and Bonjour command tests.
+- physical-device filtering so simulator records are not shown as targets;
+- verified Xcode 27 Bonjour capture for `_remotepairing._tcp`, `_remoted._tcp`,
+  and `_apple-mobdev2._tcp`;
+- a local Bonjour proxy publisher and a TCP relay backed by a companion stream;
+- a shared newline-delimited JSON transport protocol;
+- a six-digit local pairing flow between the Mac app and iPhone companion;
+- an iOS 27 companion app with Bonjour discovery and reverse stream handling;
+- a Network Extension target that is currently a configuration and lifecycle
+  skeleton, not a finished packet tunnel;
+- a small DeviceHarbor-owned rendezvous relay executable for development;
+- iOS/watchOS CoreDevice and Watch-pairing models and deterministic tests.
 
-The physical Xcode bridge is not yet certified. A real iPhone 17 and paired
-Apple Watch on iOS 27/watchOS 27 are required to verify the device graph,
-RemotePairing records, dynamic CoreDevice ports, native Xcode Run Destinations,
-breakpoints, LLDB, and Watch installation/debugging. Until that pass exists,
-the relay is candidate-only.
-
-The private-network path must expose the CoreDevice service ports in addition
-to making the device address reachable. A Tailscale ping alone is not enough:
-the iPhone must first establish Xcode wireless debugging on the local Wi-Fi
-path. A validation run that had only USB pairing reached the iPhone over
-Tailscale but received `Connection refused` from all captured Xcode service
-ports. DeviceHarbor reports that distinction and does not claim wireless-debug
-readiness until real device records are captured.
-
-An Apple Watch charging puck provides power; it is not treated as a direct USB
-developer transport. DeviceHarbor expects the Watch to be paired with its
-iPhone and visible through Xcode 27’s CoreDevice graph, with Bluetooth/Wi-Fi
-available for the Apple developer connection.
+The companion path is still candidate-only. The current slice proves the
+local discovery, pairing, framing, and prototype relay contracts. The relay is
+not yet deployed as a production service, and the path has not been certified
+against a physical iPhone 17 running iOS 27.
 
 ## Build
 
 Requirements: macOS 27, Xcode 27, and Swift 6.4.
 
 ```sh
-swift build
-swift test
-./script/build_and_run.sh --verify
+xcrun swift build
+xcrun swift test
 ```
 
-Open `Package.swift` in Xcode when you want an Xcode project view; the Swift
-package is the source of truth.
+Build the iPhone companion project without signing for a simulator compile
+check:
 
-## Pairing and transport model
+```sh
+xcodebuild -project Companion/DeviceHarborCompanion.xcodeproj \
+  -scheme DeviceHarborCompanion \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
+  -configuration Debug \
+  CODE_SIGNING_ALLOWED=NO build
+```
 
-1. Put the Mac and iPhone on the same local Wi-Fi, connect the iPhone over USB,
-   pair it with Xcode, and enable Developer Mode.
-2. Confirm Xcode wireless debugging works while the phone is still on that
-   local Wi-Fi; recent Xcode versions may enable this automatically after the
-   first pairing.
-3. Pair the Watch with its iPhone and enable Developer Mode on both devices.
-4. Capture the device’s Bonjour service records while the normal local path is
-   working and the bridge is stopped.
-5. Install and sign in to the same private-network client on the Mac and
-   iPhone, then record the iPhone’s private address in a DeviceHarbor profile.
-6. Move the iPhone to its other Wi-Fi, start the relay, and let DeviceHarbor
-   re-advertise the captured services locally while forwarding their traffic.
-7. Use Xcode’s Device Hub and `devicectl` to verify the resulting device path.
+Run the development relay locally or on a private test host:
 
-The known Xcode service families are `_remotepairing._tcp`, `_remoted._tcp`,
-and `_apple-mobdev2._tcp`. Their ports and TXT records are device/session data;
-DeviceHarbor does not invent them or commit them to the repository.
+```sh
+xcrun swift run DeviceHarborRelay 49153
+```
+
+For a physical iPhone, open
+`Companion/DeviceHarborCompanion.xcodeproj`, select the user’s development
+team for both targets, and install the app from Xcode. The Network Extension
+requires the matching entitlement and explicit user approval.
+
+## Local pairing test
+
+1. Keep the Mac DeviceHarbor app running. It advertises `_deviceharbor._tcp`
+   and shows a six-digit pairing code in the transport bar.
+2. Install the iPhone companion while the Mac and iPhone are on the same
+   local network. Allow Local Network access when iOS asks.
+3. Select the Mac in the companion, enter the displayed code, and tap `Pair
+   with Mac`.
+4. In the Mac app, select the physical iPhone, capture the Xcode Bonjour
+   records while the normal USB or same-Wi-Fi Apple path is working, and save
+   the profile.
+5. Start the bridge only after the Mac status says that the iPhone companion
+   is paired. Each local Xcode connection then opens a reverse stream request
+   to the iPhone companion.
+
+The first Apple trust and wireless-debug setup still belongs to Apple’s
+pairing flow: use USB or the same Wi-Fi first, enable Developer Mode, and
+confirm that Xcode can see the physical device. A charging puck is power, not
+a direct Watch USB data transport. A Watch is reached through its paired
+iPhone and the Xcode CoreDevice graph.
+
+## Transport roadmap
+
+The intended remote flow is:
+
+```text
+iPhone DeviceHarbor companion
+        ⇅ outbound authenticated session
+DeviceHarbor rendezvous / relay (per-user room)
+        ⇅ outbound authenticated session
+Mac DeviceHarbor
+        ⇅ local Bonjour proxy + TCP relay
+Xcode / devicectl / CoreDevice
+```
+
+The first local slice uses direct Bonjour discovery. The prototype relay can
+also accept outbound Mac and iPhone sessions for a different-network test:
+enter the relay host and port in both companion UIs, use the Mac’s displayed
+six-digit code on the iPhone, and connect both sides. The next transport
+increment is production per-user keys, reconnects, keepalives, and NAT
+traversal. A temporary tunnel may bootstrap that service during development,
+but a generic HTTP tunnel is not the CoreDevice data plane.
+
+The iOS Network Extension is deliberately kept separate from the companion
+control session. Apple’s [Packet Tunnel guidance](https://developer.apple.com/documentation/technotes/tn3120-expected-use-cases-for-network-extension-packet-tunnel-providers) says a packet tunnel is for routing packets through a tunnel server, not for hosting a general-purpose inbound listener or proxy. The production design must therefore keep the iPhone session outbound and use the extension only where the approved entitlement and transport require it.
 
 ## Security boundary
 
-DeviceHarbor stores only local profile metadata. Pairing records and private
-keys remain in the operating system’s owner-only locations managed by Apple’s
-device tooling. The relay does not open a public listener by default, does not
-provide a cloud relay, and does not disable macOS firewall or network privacy
-controls.
+The current pairing code is a development bootstrap mechanism. The transport
+does not yet claim production confidentiality or mutual authentication. Before
+release, DeviceHarbor must add per-user key material in Keychain, authenticated
+handshake and replay protection, encrypted relay traffic, explicit peer
+revocation, and bounded stream/resource limits.
 
-### Transport choices
-
-- `Tailscale`: install and sign in on both Mac and iPhone; DeviceHarbor checks
-  the bundled macOS CLI as well as PATH and reports a clear sign-in state.
-- `ZeroTier` and `NetBird`: install on both devices and enter the assigned
-  iPhone address manually.
-- `Manual IP`: no overlay app is required, but the address must already be
-  reachable from the Mac. For Bluetooth PAN, enable Personal Hotspot on the
-  iPhone, leave the iPhone Bluetooth settings visible, and select the iPhone
-  from the Mac’s Bluetooth settings. Do not pair the Mac as a generic device
-  from iPhone Bluetooth. A shared private LAN and a USB network interface are
-  other candidates. This does not make Bluetooth a native Xcode transport;
-  Bonjour is only re-advertised locally and the actual CoreDevice traffic
-  remains TCP/IP.
-
-The app is not affiliated with Apple. Xcode, iPhone, Apple Watch, and related
-marks belong to Apple Inc.
+DeviceHarbor is not affiliated with Apple. Xcode, iPhone, Apple Watch, and
+related marks belong to Apple Inc.

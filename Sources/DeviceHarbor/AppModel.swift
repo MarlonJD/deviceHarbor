@@ -1,5 +1,6 @@
 import Combine
 import DeviceHarborCore
+import DeviceHarborTransport
 import Foundation
 
 enum SidebarSelection: Hashable {
@@ -18,20 +19,36 @@ final class AppModel: ObservableObject {
     @Published var isRefreshing = false
     @Published var watchPairings: [DevicePairing] = []
     @Published var isLoadingWatchPairings = false
+    @Published var companionState: DeviceHarborCompanionState = .stopped
+    @Published var companionPairingCode = ""
+    @Published var relayHost = ""
+    @Published var relayPort: UInt16 = 49_153
 
     private let deviceClient: DeviceCtlClient
     private let profileStore: any ProfileStoring
-    private let meshResolver: MeshEndpointResolver
+    private let companionServer: DeviceHarborCompanionServer
     private var bridge: BonjourBridge?
 
     init(
         deviceClient: DeviceCtlClient = DeviceCtlClient(),
-        profileStore: any ProfileStoring = FileProfileStore(),
-        meshResolver: MeshEndpointResolver = MeshEndpointResolver()
+        profileStore: any ProfileStoring = FileProfileStore()
     ) {
         self.deviceClient = deviceClient
         self.profileStore = profileStore
-        self.meshResolver = meshResolver
+        let companionServer = DeviceHarborCompanionServer()
+        self.companionServer = companionServer
+        self.companionPairingCode = companionServer.pairingCode
+        companionServer.onStateChange = { [weak self] state in
+            Task { @MainActor [weak self] in
+                self?.companionState = state
+            }
+        }
+        do {
+            try companionServer.start()
+            companionState = .waitingForPair
+        } catch {
+            companionState = .failed(error.localizedDescription)
+        }
         do {
             profiles = try profileStore.load()
         } catch {
@@ -40,6 +57,10 @@ final class AppModel: ObservableObject {
         Task { @MainActor [weak self] in
             self?.refreshDevices()
         }
+    }
+
+    deinit {
+        companionServer.stop()
     }
 
     var selectedDevice: CoreDevice? {
@@ -85,13 +106,11 @@ final class AppModel: ObservableObject {
             displayName: "New Device",
             deviceIdentifier: "",
             platform: .iOS,
-            meshProvider: .tailscale,
             advertisedAddress: "127.0.0.1",
             services: [
                 RelayService(
                     instanceName: "iPhone",
                     serviceType: "_remotepairing._tcp",
-                    remoteAddress: "",
                     remotePort: 49152
                 )
             ]
@@ -181,28 +200,20 @@ final class AppModel: ObservableObject {
 
     func startBridge(for profile: DeviceProfile) {
         guard profile.isValid else {
-            bridgeState = .failed("Complete the profile and add a valid remote service first.")
+            bridgeState = .failed("Complete the profile and add a valid Bonjour service first.")
+            return
+        }
+        guard case .paired = companionState else {
+            bridgeState = .failed("Pair the DeviceHarbor iPhone companion before starting the bridge.")
+            statusMessage = "The Mac is ready, but no paired DeviceHarbor iPhone companion session is active."
             return
         }
         bridge?.stop()
         bridgeState = .starting
-        statusMessage = "Starting Bonjour/TCP relay…"
-        let newBridge = BonjourBridge()
+        statusMessage = "Starting Bonjour proxy and DeviceHarbor transport…"
+        let newBridge = BonjourBridge(streamProvider: companionServer)
         Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
-                let reachability = TCPReachabilityTester()
-                for service in profile.services {
-                    switch reachability.test(address: service.remoteAddress, port: service.remotePort) {
-                    case .reachable:
-                        continue
-                    case .failed(let message):
-                        return Result<BridgeStartResult, BackgroundFailure>.failure(
-                            BackgroundFailure(
-                                message: "Cannot start the relay for \(service.serviceType): \(message)"
-                            )
-                        )
-                    }
-                }
                 do {
                     return Result<BridgeStartResult, BackgroundFailure>.success(try newBridge.start(profile: profile))
                 } catch {
@@ -236,44 +247,22 @@ final class AppModel: ObservableObject {
         statusMessage = "Relay stopped."
     }
 
-    func resolveMeshAddress(
-        for provider: MeshProvider,
-        matching query: String,
-        completion: @escaping @MainActor (MeshResolutionOutcome) -> Void
-    ) {
-        statusMessage = "Resolving \(provider.displayName) peer address…"
-        let resolver = meshResolver
-        Task { [weak self] in
-            let outcome = await Task.detached(priority: .userInitiated) {
-                do {
-                    return MeshResolutionOutcome.success(try resolver.resolve(provider: provider, matching: query))
-                } catch {
-                    return MeshResolutionOutcome.failure(error.localizedDescription)
-                }
-            }.value
-            guard let self else { return }
-            switch outcome {
-            case .success(let address): statusMessage = "Resolved private address \(address)."
-            case .failure(let message): statusMessage = message
-            }
-            completion(outcome)
+    func connectCompanionRelay() {
+        let host = relayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty else {
+            statusMessage = "Enter a DeviceHarbor relay host first."
+            return
         }
-    }
-
-    func testRemoteAddress(address: String, port: UInt16) {
-        statusMessage = "Testing \(address):\(port)…"
-        let tester = TCPReachabilityTester()
-        Task { [weak self] in
-            let outcome = await Task.detached(priority: .userInitiated) {
-                tester.test(address: address, port: port)
-            }.value
-            guard let self else { return }
-            switch outcome {
-            case .reachable:
-                statusMessage = "Reachable: \(address):\(port)."
-            case .failed(let message):
-                statusMessage = message
-            }
+        do {
+            try companionServer.connectToRelay(
+                host: host,
+                port: relayPort,
+                rendezvousID: companionPairingCode,
+                accessToken: companionPairingCode
+            )
+            statusMessage = "Connecting Mac to DeviceHarbor relay \(host):\(relayPort)…"
+        } catch {
+            statusMessage = error.localizedDescription
         }
     }
 

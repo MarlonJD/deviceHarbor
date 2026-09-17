@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import DeviceHarborCore
+import DeviceHarborTransport
 
 final class DeviceHarborCoreTests: XCTestCase {
     func testParsesCurrentDeviceCtlShapeForPhoneAndWatch() throws {
@@ -205,38 +206,6 @@ final class DeviceHarborCoreTests: XCTestCase {
         XCTAssertEqual(pairings[0].active, true)
     }
 
-    func testParsesTailscaleStatusPeers() throws {
-        let output = #"{"Self":{"HostName":"mac","DNSName":"mac.tailnet.ts.net.","TailscaleIPs":["100.64.0.2"],"Online":true},"Peer":{"key":{"HostName":"Burak-iPhoneu","DNSName":"burak-iphoneu.tailnet.ts.net.","TailscaleIPs":["100.64.0.10"],"Online":true}}}"#
-        let peers = try TailscaleStatusParser.parse(output)
-
-        XCTAssertEqual(peers.count, 2)
-        XCTAssertTrue(peers[0].isSelf)
-        XCTAssertFalse(peers[1].isSelf)
-        XCTAssertEqual(peers[1].addresses, ["100.64.0.10"])
-        XCTAssertTrue(peers[1].online)
-    }
-
-    func testReadsTailscaleBackendState() {
-        let output = #"{"BackendState":"NeedsLogin","Self":{"HostName":"mac"}}"#
-        XCTAssertEqual(TailscaleStatusParser.backendState(output), "NeedsLogin")
-    }
-
-    func testReachabilityRejectsMissingAddressAndPortWithoutOpeningAConnection() {
-        let tester = TCPReachabilityTester()
-
-        if case .failed(let message) = tester.test(address: "", port: 49152) {
-            XCTAssertTrue(message.contains("address"))
-        } else {
-            XCTFail("Expected empty address to be rejected")
-        }
-
-        if case .failed(let message) = tester.test(address: "127.0.0.1", port: 0) {
-            XCTAssertTrue(message.contains("port"))
-        } else {
-            XCTFail("Expected zero port to be rejected")
-        }
-    }
-
     func testProfileRoundTripDoesNotAddCredentials() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("deviceharbor-tests-\(UUID().uuidString)", isDirectory: true)
@@ -245,13 +214,11 @@ final class DeviceHarborCoreTests: XCTestCase {
             displayName: "Test iPhone",
             deviceIdentifier: "PHONE-UDID",
             platform: .iOS,
-            meshProvider: .tailscale,
             advertisedAddress: "127.0.0.1",
             services: [
                 RelayService(
                     instanceName: "iPhone",
                     serviceType: "_remotepairing._tcp",
-                    remoteAddress: "100.64.0.10",
                     remotePort: 49152
                 )
             ]
@@ -263,5 +230,23 @@ final class DeviceHarborCoreTests: XCTestCase {
         XCTAssertFalse(String(decoding: try Data(contentsOf: store.fileURL), as: UTF8.self).contains("secret"))
 
         try FileManager.default.removeItem(at: directory)
+    }
+
+    func testDeviceHarborFramesRoundTripAsNewlineDelimitedJSON() throws {
+        let frame = DeviceHarborFrame.streamData(
+            streamID: "stream-1",
+            payload: Data("hello".utf8)
+        )
+        var buffer = try DeviceHarborWireCodec.encode(frame)
+
+        XCTAssertEqual(try DeviceHarborWireCodec.decodeLines(from: &buffer), [frame])
+        XCTAssertTrue(buffer.isEmpty)
+    }
+
+    func testDeviceHarborPairingCodeIsSixDigits() {
+        let code = DeviceHarborPairing.generateCode()
+
+        XCTAssertEqual(code.count, 6)
+        XCTAssertTrue(code.allSatisfy(\.isNumber))
     }
 }

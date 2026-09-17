@@ -28,12 +28,11 @@ public struct CapturedBonjourService: Codable, Hashable, Identifiable, Sendable 
         self.textRecords = textRecords
     }
 
-    public func makeRelayService(remoteAddress: String) -> RelayService {
+    public func makeRelayService() -> RelayService {
         RelayService(
             instanceName: instanceName,
             serviceType: serviceType,
             domain: domain,
-            remoteAddress: remoteAddress,
             remotePort: remotePort,
             textRecords: textRecords
         )

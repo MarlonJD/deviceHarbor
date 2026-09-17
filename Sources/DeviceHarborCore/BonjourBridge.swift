@@ -1,3 +1,4 @@
+import DeviceHarborTransport
 import Foundation
 import Network
 
@@ -84,22 +85,24 @@ public final class BonjourProxyRegistration: @unchecked Sendable {
 
 public final class TCPRelay: @unchecked Sendable {
     private let service: RelayService
+    private let streamProvider: any DeviceHarborStreamProvider
     private let queue: DispatchQueue
     private var listener: NWListener?
-    private var sessions: [UUID: RelaySession] = [:]
+    private var sessions: [UUID: CompanionRelaySession] = [:]
     private let lock = NSLock()
 
-    public init(service: RelayService) {
+    public init(
+        service: RelayService,
+        streamProvider: any DeviceHarborStreamProvider
+    ) {
         self.service = service
+        self.streamProvider = streamProvider
         self.queue = DispatchQueue(label: "dev.deviceharbor.relay.\(service.id.uuidString)")
     }
 
     public func start() throws -> UInt16 {
         guard service.isValid else {
-            throw BridgeError.invalidService("missing instance, service type, address, or port")
-        }
-        guard let remotePort = NWEndpoint.Port(rawValue: service.remotePort) else {
-            throw BridgeError.invalidService("remote port is out of range")
+            throw BridgeError.invalidService("missing instance, service type, or port")
         }
 
         let listener: NWListener
@@ -137,7 +140,7 @@ public final class TCPRelay: @unchecked Sendable {
             }
         }
         listener.newConnectionHandler = { [weak self] connection in
-            self?.accept(connection, remotePort: remotePort)
+            self?.accept(connection)
         }
         listener.start(queue: queue)
 
@@ -171,14 +174,14 @@ public final class TCPRelay: @unchecked Sendable {
         activeSessions.forEach { $0.stop() }
     }
 
-    private func accept(_ connection: NWConnection, remotePort: NWEndpoint.Port) {
+    private func accept(_ connection: NWConnection) {
         let sessionID = UUID()
-        let remote = NWConnection(
-            host: NWEndpoint.Host(service.remoteAddress),
-            port: remotePort,
-            using: .tcp
-        )
-        let session = RelaySession(inbound: connection, outbound: remote, queue: queue) { [weak self] in
+        let session = CompanionRelaySession(
+            inbound: connection,
+            remotePort: service.remotePort,
+            streamProvider: streamProvider,
+            queue: queue
+        ) { [weak self] in
             self?.remove(sessionID)
         }
         lock.lock()
@@ -217,26 +220,44 @@ private final class ListenerStartState: @unchecked Sendable {
     }
 }
 
-private final class RelaySession: @unchecked Sendable {
+private final class CompanionRelaySession: @unchecked Sendable {
     private let inbound: NWConnection
-    private let outbound: NWConnection
+    private let remotePort: UInt16
+    private let streamProvider: any DeviceHarborStreamProvider
     private let queue: DispatchQueue
-    private let onStop: () -> Void
+    private let onStop: @Sendable () -> Void
     private let lock = NSLock()
     private var stopped = false
+    private var outbound: (any DeviceHarborByteStream)?
+    private var bufferedInbound = Data()
+    private let maximumBufferedBytes = 1024 * 1024
 
-    init(inbound: NWConnection, outbound: NWConnection, queue: DispatchQueue, onStop: @escaping () -> Void) {
+    init(
+        inbound: NWConnection,
+        remotePort: UInt16,
+        streamProvider: any DeviceHarborStreamProvider,
+        queue: DispatchQueue,
+        onStop: @escaping @Sendable () -> Void
+    ) {
         self.inbound = inbound
-        self.outbound = outbound
+        self.remotePort = remotePort
+        self.streamProvider = streamProvider
         self.queue = queue
         self.onStop = onStop
     }
 
     func start() {
         inbound.start(queue: queue)
-        outbound.start(queue: queue)
-        pump(from: inbound, to: outbound)
-        pump(from: outbound, to: inbound)
+        pumpInbound()
+        streamProvider.openStream(port: remotePort) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let stream):
+                self.attach(stream)
+            case .failure:
+                self.stop()
+            }
+        }
     }
 
     func stop() {
@@ -246,26 +267,68 @@ private final class RelaySession: @unchecked Sendable {
             return
         }
         stopped = true
+        let stream = outbound
+        outbound = nil
         lock.unlock()
+
         inbound.cancel()
-        outbound.cancel()
+        stream?.close()
         onStop()
     }
 
-    private func pump(from source: NWConnection, to destination: NWConnection) {
-        source.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+    private func attach(_ stream: any DeviceHarborByteStream) {
+        lock.lock()
+        guard !stopped else {
+            lock.unlock()
+            stream.close()
+            return
+        }
+        outbound = stream
+        let buffered = bufferedInbound
+        bufferedInbound.removeAll(keepingCapacity: true)
+        lock.unlock()
+
+        stream.onData = { [weak self] data in
+            guard let self else { return }
+            self.inbound.send(content: data, completion: .contentProcessed { [weak self] error in
+                if error != nil { self?.stop() }
+            })
+        }
+        stream.onEnd = { [weak self] _ in self?.stop() }
+        if !buffered.isEmpty {
+            stream.send(buffered)
+        }
+    }
+
+    private func pumpInbound() {
+        inbound.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
             guard let self else { return }
             if let data, !data.isEmpty {
-                destination.send(content: data, completion: .contentProcessed { [weak self] error in
-                    if error != nil { self?.stop() }
-                })
+                self.forwardInbound(data)
             }
             if isComplete || error != nil {
                 self.stop()
             } else {
-                self.pump(from: source, to: destination)
+                self.pumpInbound()
             }
         }
+    }
+
+    private func forwardInbound(_ data: Data) {
+        lock.lock()
+        guard !stopped else {
+            lock.unlock()
+            return
+        }
+        if let outbound {
+            lock.unlock()
+            outbound.send(data)
+            return
+        }
+        bufferedInbound.append(data)
+        let tooLarge = bufferedInbound.count > maximumBufferedBytes
+        lock.unlock()
+        if tooLarge { stop() }
     }
 }
 
@@ -285,9 +348,12 @@ public final class BonjourBridge: @unchecked Sendable {
         let registration: BonjourProxyRegistration
     }
 
+    private let streamProvider: any DeviceHarborStreamProvider
     private var activeServices: [UUID: ActiveService] = [:]
 
-    public init() {}
+    public init(streamProvider: any DeviceHarborStreamProvider) {
+        self.streamProvider = streamProvider
+    }
 
     @discardableResult
     public func start(profile: DeviceProfile) throws -> BridgeStartResult {
@@ -299,7 +365,7 @@ public final class BonjourBridge: @unchecked Sendable {
         var localPorts: [UUID: UInt16] = [:]
         do {
             for service in profile.services {
-                let relay = TCPRelay(service: service)
+                let relay = TCPRelay(service: service, streamProvider: streamProvider)
                 let localPort = try relay.start()
                 let command = BonjourProxyCommand.make(
                     instanceName: service.instanceName,

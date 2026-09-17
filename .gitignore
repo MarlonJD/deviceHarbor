@@ -6,3 +6,4 @@ xcuserdata/
 *.dmg
 *.app
 *.log
+.DS_Store

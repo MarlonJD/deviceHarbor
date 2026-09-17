@@ -1,0 +1,376 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000010000000000000001 /* DeviceHarborCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* DeviceHarborCompanionApp.swift */; };
+		A10000010000000000000002 /* CompanionContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* CompanionContentView.swift */; };
+		A10000010000000000000003 /* CompanionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003 /* CompanionModel.swift */; };
+		A10000010000000000000004 /* DeviceHarborProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* DeviceHarborProtocol.swift */; };
+		A10000010000000000000005 /* DeviceHarborChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005 /* DeviceHarborChannel.swift */; };
+		A10000010000000000000006 /* DeviceHarborCompanion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006 /* DeviceHarborCompanion.swift */; };
+		A10000010000000000000007 /* Network.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000010000000000000007 /* Network.framework */; };
+		A10000010000000000000008 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000010000000000000008 /* NetworkExtension.framework */; };
+		A10000010000000000000009 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000009 /* PacketTunnelProvider.swift */; };
+		A1000001000000000000000A /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000010000000000000008 /* NetworkExtension.framework */; };
+		A1000001000000000000000B /* Network.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000010000000000000007 /* Network.framework */; };
+		A1000001000000000000000C /* DeviceHarborNetworkExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000C /* DeviceHarborNetworkExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A30000010000000000000001 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A1000001000000000000000C /* DeviceHarborNetworkExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A20000010000000000000001 /* DeviceHarborCompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceHarborCompanionApp.swift; sourceTree = "<group>"; };
+		A20000010000000000000002 /* CompanionContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionContentView.swift; sourceTree = "<group>"; };
+		A20000010000000000000003 /* CompanionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionModel.swift; sourceTree = "<group>"; };
+		A20000010000000000000004 /* DeviceHarborProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeviceHarborProtocol.swift; path = DeviceHarborProtocol.swift; sourceTree = "<group>"; };
+		A20000010000000000000005 /* DeviceHarborChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeviceHarborChannel.swift; path = DeviceHarborChannel.swift; sourceTree = "<group>"; };
+		A20000010000000000000006 /* DeviceHarborCompanion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeviceHarborCompanion.swift; path = DeviceHarborCompanion.swift; sourceTree = "<group>"; };
+		A20000010000000000000007 /* Network.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Network.framework; path = System/Library/Frameworks/Network.framework; sourceTree = SDKROOT; };
+		A20000010000000000000008 /* NetworkExtension.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = NetworkExtension.framework; path = System/Library/Frameworks/NetworkExtension.framework; sourceTree = SDKROOT; };
+		A20000010000000000000009 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		A2000001000000000000000A /* DeviceHarborCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DeviceHarborCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000001000000000000000B /* DeviceHarborNetworkExtension.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = DeviceHarborNetworkExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000001000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000001000000000000000E /* DeviceHarborCompanion.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DeviceHarborCompanion.entitlements; sourceTree = "<group>"; };
+		A2000001000000000000000F /* NetworkExtensionInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = NetworkExtensionInfo.plist; path = ../DeviceHarborNetworkExtension/Info.plist; sourceTree = "<group>"; };
+		A20000010000000000000010 /* DeviceHarborNetworkExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = DeviceHarborNetworkExtension.entitlements; path = ../DeviceHarborNetworkExtension/DeviceHarborNetworkExtension.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A30000010000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000007 /* Network.framework in Frameworks */,
+				A10000010000000000000008 /* NetworkExtension.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000010000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000001000000000000000A /* NetworkExtension.framework in Frameworks */,
+				A1000001000000000000000B /* Network.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A40000010000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A40000010000000000000002 /* DeviceHarborCompanion */,
+				A40000010000000000000003 /* DeviceHarborNetworkExtension */,
+				A40000010000000000000004 /* DeviceHarborTransport */,
+				A40000010000000000000005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A40000010000000000000002 /* DeviceHarborCompanion */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000001 /* DeviceHarborCompanionApp.swift */,
+				A20000010000000000000002 /* CompanionContentView.swift */,
+				A20000010000000000000003 /* CompanionModel.swift */,
+				A2000001000000000000000D /* Info.plist */,
+				A2000001000000000000000E /* DeviceHarborCompanion.entitlements */,
+			);
+			path = DeviceHarborCompanion;
+			sourceTree = "<group>";
+		};
+		A40000010000000000000003 /* DeviceHarborNetworkExtension */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000009 /* PacketTunnelProvider.swift */,
+				A2000001000000000000000F /* NetworkExtensionInfo.plist */,
+				A20000010000000000000010 /* DeviceHarborNetworkExtension.entitlements */,
+			);
+			path = DeviceHarborNetworkExtension;
+			sourceTree = "<group>";
+		};
+		A40000010000000000000004 /* DeviceHarborTransport */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000004 /* DeviceHarborProtocol.swift */,
+				A20000010000000000000005 /* DeviceHarborChannel.swift */,
+				A20000010000000000000006 /* DeviceHarborCompanion.swift */,
+			);
+			path = ../Sources/DeviceHarborTransport;
+			sourceTree = "<group>";
+		};
+		A40000010000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A2000001000000000000000A /* DeviceHarborCompanion.app */,
+				A2000001000000000000000B /* DeviceHarborNetworkExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000010000000000000001 /* DeviceHarborCompanion */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A60000010000000000000001 /* Build configuration list for PBXNativeTarget "DeviceHarborCompanion" */;
+			buildPhases = (
+				A30000010000000000000002 /* Frameworks */,
+				A30000010000000000000004 /* Sources */,
+				A30000010000000000000005 /* Resources */,
+				A30000010000000000000001 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A70000010000000000000001 /* PBXTargetDependency */,
+			);
+			name = DeviceHarborCompanion;
+			productName = DeviceHarborCompanion;
+			productReference = A2000001000000000000000A /* DeviceHarborCompanion.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A50000010000000000000002 /* DeviceHarborNetworkExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A60000010000000000000002 /* Build configuration list for PBXNativeTarget "DeviceHarborNetworkExtension" */;
+			buildPhases = (
+				A30000010000000000000003 /* Frameworks */,
+				A30000010000000000000006 /* Sources */,
+				A30000010000000000000007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DeviceHarborNetworkExtension;
+			productName = DeviceHarborNetworkExtension;
+			productReference = A2000001000000000000000B /* DeviceHarborNetworkExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A80000010000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					A50000010000000000000001 = { CreatedOnToolsVersion = 27.0; };
+					A50000010000000000000002 = { CreatedOnToolsVersion = 27.0; };
+				};
+			};
+			buildConfigurationList = A60000010000000000000003 /* Build configuration list for PBXProject "DeviceHarborCompanion" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A40000010000000000000001;
+			productRefGroup = A40000010000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A50000010000000000000001 /* DeviceHarborCompanion */,
+				A50000010000000000000002 /* DeviceHarborNetworkExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A30000010000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000010000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A30000010000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000001 /* DeviceHarborCompanionApp.swift in Sources */,
+				A10000010000000000000002 /* CompanionContentView.swift in Sources */,
+				A10000010000000000000003 /* CompanionModel.swift in Sources */,
+				A10000010000000000000004 /* DeviceHarborProtocol.swift in Sources */,
+				A10000010000000000000005 /* DeviceHarborChannel.swift in Sources */,
+				A10000010000000000000006 /* DeviceHarborCompanion.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000010000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000009 /* PacketTunnelProvider.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A70000010000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A50000010000000000000002 /* DeviceHarborNetworkExtension */; targetProxy = A90000010000000000000001 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		A90000010000000000000001 /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = A80000010000000000000001 /* Project object */; proxyType = 1; remoteGlobalIDString = A50000010000000000000002; remoteInfo = DeviceHarborNetworkExtension; };
+/* End PBXContainerItemProxy section */
+
+/* Begin XCBuildConfiguration section */
+		A60000010000000000000004 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				CODE_SIGN_ENTITLEMENTS = DeviceHarborCompanion/DeviceHarborCompanion.entitlements;
+				INFOPLIST_FILE = DeviceHarborCompanion/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.deviceharbor.companion;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = singlefile;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1";
+			};
+			name = Debug;
+		};
+		A60000010000000000000005 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				CODE_SIGN_ENTITLEMENTS = DeviceHarborCompanion/DeviceHarborCompanion.entitlements;
+				INFOPLIST_FILE = DeviceHarborCompanion/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.deviceharbor.companion;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1";
+			};
+			name = Release;
+		};
+		A60000010000000000000006 /* Extension Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = DeviceHarborNetworkExtension/DeviceHarborNetworkExtension.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				INFOPLIST_FILE = DeviceHarborNetworkExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.deviceharbor.companion.network-extension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1";
+			};
+			name = Debug;
+		};
+		A60000010000000000000007 /* Extension Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = DeviceHarborNetworkExtension/DeviceHarborNetworkExtension.entitlements;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				INFOPLIST_FILE = DeviceHarborNetworkExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.deviceharbor.companion.network-extension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1";
+			};
+			name = Release;
+		};
+		A60000010000000000000008 /* Project Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A60000010000000000000009 /* Project Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A60000010000000000000001 /* Build configuration list for PBXNativeTarget "DeviceHarborCompanion" */ = {isa = XCConfigurationList; buildConfigurations = (A60000010000000000000004 /* Debug */, A60000010000000000000005 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A60000010000000000000002 /* Build configuration list for PBXNativeTarget "DeviceHarborNetworkExtension" */ = {isa = XCConfigurationList; buildConfigurations = (A60000010000000000000006 /* Extension Debug */, A60000010000000000000007 /* Extension Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A60000010000000000000003 /* Build configuration list for PBXProject "DeviceHarborCompanion" */ = {isa = XCConfigurationList; buildConfigurations = (A60000010000000000000008 /* Project Debug */, A60000010000000000000009 /* Project Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A80000010000000000000001 /* Project object */;
+}

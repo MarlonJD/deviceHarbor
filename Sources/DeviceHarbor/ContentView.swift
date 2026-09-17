@@ -56,24 +56,70 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            switch model.selection {
-            case .device(let id):
-                if let device = model.devices.first(where: { $0.id == id }) {
-                    DeviceDetailView(device: device)
-                } else {
-                    EmptyDetailView(title: "Device unavailable", systemImage: "iphone.slash")
+            VStack(spacing: 0) {
+                CompanionStatusBar()
+                Divider()
+                switch model.selection {
+                case .device(let id):
+                    if let device = model.devices.first(where: { $0.id == id }) {
+                        DeviceDetailView(device: device)
+                    } else {
+                        EmptyDetailView(title: "Device unavailable", systemImage: "iphone.slash")
+                    }
+                case .profile(let id):
+                    if let profile = model.profiles.first(where: { $0.id == id }) {
+                        ProfileDetailView(profile: profile)
+                    } else {
+                        EmptyDetailView(title: "Profile unavailable", systemImage: "externaldrive.badge.questionmark")
+                    }
+                case nil:
+                    WelcomeView()
                 }
-            case .profile(let id):
-                if let profile = model.profiles.first(where: { $0.id == id }) {
-                    ProfileDetailView(profile: profile)
-                } else {
-                    EmptyDetailView(title: "Profile unavailable", systemImage: "externaldrive.badge.questionmark")
-                }
-            case nil:
-                WelcomeView()
             }
         }
         .navigationSplitViewStyle(.balanced)
+    }
+}
+
+private struct CompanionStatusBar: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.shield")
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("DeviceHarbor private transport")
+                    .font(.callout.weight(.semibold))
+                Text(companionDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if case .waitingForPair = model.companionState {
+                Text("Pair code \(model.companionPairingCode)")
+                    .font(.system(.callout, design: .monospaced).weight(.semibold))
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(.quaternary.opacity(0.35))
+    }
+
+    private var companionDescription: String {
+        switch model.companionState {
+        case .stopped:
+            "Stopped"
+        case .connecting:
+            "Connecting to iPhone companion…"
+        case .waitingForPair:
+            "Advertising on the local network; enter the code in the iPhone companion."
+        case .paired(let peerID):
+            "Paired with \(peerID)."
+        case .failed(let message):
+            "Failed: \(message)"
+        }
     }
 }
 
@@ -105,7 +151,7 @@ private struct ProfileRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(profile.displayName)
                     .lineLimit(1)
-                Text("\(profile.platform.displayName) · \(profile.meshProvider.displayName)")
+                Text("\(profile.platform.displayName) · DeviceHarbor transport")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -285,16 +331,30 @@ struct ProfileDetailView: View {
     @State private var draft: DeviceProfile
     @State private var isCapturing = false
     @State private var captureMessage = ""
-    @State private var commonRemoteAddress = ""
 
     init(profile: DeviceProfile) {
         self.profile = profile
         _draft = State(initialValue: profile)
-        _commonRemoteAddress = State(initialValue: profile.services.first?.remoteAddress ?? "")
     }
 
     var body: some View {
         Form {
+            Section("DeviceHarbor relay (optional)") {
+                Text("For different Wi-Fi networks, both companions connect out to the same DeviceHarbor relay. This development build uses the pairing code as the temporary room token.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                TextField("Relay host", text: $model.relayHost)
+                HStack {
+                    TextField("Relay port", value: $model.relayPort, format: .number)
+                    Text("TCP")
+                        .foregroundStyle(.secondary)
+                }
+                Button("Connect Mac to relay", systemImage: "arrow.up.right") {
+                    model.connectCompanionRelay()
+                }
+                .disabled(model.relayHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
             Section {
                 TextField("Display name", text: $draft.displayName)
                 TextField("CoreDevice identifier or name", text: $draft.deviceIdentifier)
@@ -318,48 +378,9 @@ struct ProfileDetailView: View {
                         Text(platform.displayName).tag(platform)
                     }
                 }
-                Picker("Mesh network", selection: $draft.meshProvider) {
-                    ForEach(MeshProvider.allCases, id: \.self) { provider in
-                        Text(provider.displayName).tag(provider)
-                    }
-                }
-                Text(draft.meshProvider.guidance)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 TextField("Local advertised address", text: $draft.advertisedAddress)
                     .help("The Mac address advertised to Xcode; 127.0.0.1 is useful for local tests.")
-                TextField("iPhone/Watch private mesh address", text: $commonRemoteAddress)
-                    .help("Use the iPhone's Tailscale, ZeroTier, NetBird, or Bluetooth-PAN address.")
-                HStack {
-                    Button("Apply address to all services", systemImage: "arrow.down.right.and.arrow.up.left") {
-                        applyCommonRemoteAddress()
-                    }
-                    if draft.meshProvider == .tailscale {
-                        Button("Resolve Tailscale address", systemImage: "point.3.connected.trianglepath.dotted") {
-                            let query = model.devices.first(where: { $0.identifier == draft.deviceIdentifier })?.name
-                                ?? draft.displayName
-                            model.resolveMeshAddress(for: draft.meshProvider, matching: query) { outcome in
-                                if case .success(let address) = outcome {
-                                    commonRemoteAddress = address
-                                    applyCommonRemoteAddress()
-                                }
-                            }
-                        }
-                    }
-                    Button("Test private address", systemImage: "checkmark.circle") {
-                        model.testRemoteAddress(
-                            address: commonRemoteAddress,
-                            port: draft.services.first?.remotePort ?? 0
-                        )
-                    }
-                    .disabled(commonRemoteAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                if let hint = privateAddressTestHint {
-                    Label(hint, systemImage: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Text("Remote mesh address belongs to the iPhone/Watch side. The local advertised address belongs to this Mac.")
+                Text("The iPhone companion keeps an outbound DeviceHarbor session to this Mac. The Mac asks that session for each CoreDevice service instead of dialing the phone directly.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } header: {
@@ -371,7 +392,6 @@ struct ProfileDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         TextField("Instance name", text: $service.instanceName)
                         TextField("Bonjour type", text: $service.serviceType)
-                        TextField("Remote mesh address", text: $service.remoteAddress)
                         HStack {
                             TextField("Remote port", value: $service.remotePort, format: .number)
                             Text("TCP")
@@ -391,7 +411,6 @@ struct ProfileDetailView: View {
                         RelayService(
                             instanceName: "Device service",
                             serviceType: "_remoted._tcp",
-                            remoteAddress: draft.services.first?.remoteAddress ?? "",
                             remotePort: 49153
                         )
                     )
@@ -404,7 +423,6 @@ struct ProfileDetailView: View {
                 HStack {
                     Button(isCapturing ? "Capturing…" : "Capture local records", systemImage: "dot.radiowaves.left.and.right") {
                         isCapturing = true
-                        let remoteAddress = draft.services.first?.remoteAddress ?? ""
                         let identities = model.devices.first(where: { $0.identifier == draft.deviceIdentifier })
                             .map { [$0.identifier, $0.udid, $0.name] + $0.potentialHostnames }
                             ?? (draft.deviceIdentifier.isEmpty ? [] : [draft.deviceIdentifier])
@@ -416,8 +434,8 @@ struct ProfileDetailView: View {
                                     captureMessage = "No matching wireless-debug records found. Pair the phone over USB while Mac and iPhone share Wi-Fi, then try again."
                                     return
                                 }
-                                draft.services = services.map { $0.makeRelayService(remoteAddress: remoteAddress) }
-                                captureMessage = "Loaded \(services.count) verified device record(s); resolve the private address, then save."
+                                draft.services = services.map { $0.makeRelayService() }
+                                captureMessage = "Loaded \(services.count) verified device record(s); save, pair the iPhone companion, then start the bridge."
                             case .failure(let message):
                                 captureMessage = message
                             }
@@ -435,16 +453,14 @@ struct ProfileDetailView: View {
             Section {
                 HStack {
                     Button("Save Profile") {
-                        applyCommonRemoteAddress()
                         model.updateProfile(draft)
                     }
                     Button(model.bridgeState == .stopped ? "Start Bridge" : "Restart Bridge") {
-                        applyCommonRemoteAddress()
                         model.updateProfile(draft)
                         model.startBridge(for: draft)
                     }
-                    .disabled(!profileWithCommonAddress.isValid)
-                    if !profileWithCommonAddress.isValid {
+                    .disabled(!draft.isValid)
+                    if !draft.isValid {
                         Text(profileValidationMessage)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -466,42 +482,17 @@ struct ProfileDetailView: View {
         .padding(28)
         .onChange(of: profile) { _, newValue in
             draft = newValue
-            commonRemoteAddress = newValue.services.first?.remoteAddress ?? ""
         }
-    }
-
-    private var profileWithCommonAddress: DeviceProfile {
-        var value = draft
-        for index in value.services.indices where value.services[index].remoteAddress.isEmpty {
-            value.services[index].remoteAddress = commonRemoteAddress
-        }
-        return value
     }
 
     private var profileValidationMessage: String {
         if draft.deviceIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "Link this profile to a connected CoreDevice before starting the bridge."
         }
-        if commonRemoteAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "Resolve or enter the iPhone/Watch private address first."
-        }
         if draft.services.isEmpty {
             return "Add at least one Bonjour service before starting the bridge."
         }
-        return "Complete each Bonjour service with an instance name, service type, address, and port."
-    }
-
-    private var privateAddressTestHint: String? {
-        let device = model.devices.first(where: { $0.identifier == draft.deviceIdentifier })
-            ?? model.devices.first(where: { $0.isPhysical && $0.platformKind == draft.platform })
-        guard device?.transportType.lowercased().contains("wired") == true else { return nil }
-        return "The iPhone is connected over USB. This button tests the private-network address, not the USB path."
-    }
-
-    private func applyCommonRemoteAddress() {
-        for index in draft.services.indices {
-            draft.services[index].remoteAddress = commonRemoteAddress
-        }
+        return "Complete each Bonjour service with an instance name, service type, and port."
     }
 
 }
