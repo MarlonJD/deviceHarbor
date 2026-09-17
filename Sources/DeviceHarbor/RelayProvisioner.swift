@@ -103,12 +103,29 @@ struct DeviceHarborEphemeralRelayProvisioner: Sendable {
 
     private static func npxURL(fileManager: FileManager) -> URL? {
         let environment = ProcessInfo.processInfo.environment
+        let pathCandidates = environment["PATH"]?
+            .split(separator: ":")
+            .map { String($0) }
+            .map { "\($0)/npx" } ?? []
+        let homeDirectory = fileManager.homeDirectoryForCurrentUser
+        let nvmDirectory = homeDirectory.appendingPathComponent(".nvm/versions/node", isDirectory: true)
+        let nvmCandidates = (try? fileManager.contentsOfDirectory(
+            at: nvmDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ))?
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+            .map { $0.appendingPathComponent("bin/npx").path } ?? []
         let candidates = [
             environment["DEVICEHARBOR_NPX_PATH"],
+            environment["NVM_BIN"].map { "\($0)/npx" },
+            environment["VOLTA_HOME"].map { "\($0)/bin/npx" },
+            homeDirectory.appendingPathComponent(".volta/bin/npx").path,
             "/opt/homebrew/bin/npx",
             "/usr/local/bin/npx",
             "/usr/bin/npx"
-        ].compactMap { $0 }
+        ]
+        .compactMap { $0 } + pathCandidates + nvmCandidates
         return candidates
             .map { URL(fileURLWithPath: $0) }
             .first { fileManager.isExecutableFile(atPath: $0.path) }
