@@ -29,11 +29,16 @@ public protocol DeviceHarborStreamProvider: AnyObject, Sendable {
     )
 }
 
+public enum DeviceHarborCompanionTransport: String, Codable, Sendable {
+    case localNetwork
+    case relay
+}
+
 public enum DeviceHarborCompanionState: Equatable, Sendable {
     case stopped
     case connecting
     case waitingForPair
-    case paired(peerID: String)
+    case paired(peerID: String, transport: DeviceHarborCompanionTransport)
     case failed(String)
 }
 
@@ -47,6 +52,7 @@ public final class DeviceHarborCompanionServer: @unchecked Sendable, DeviceHarbo
     private let lock = NSLock()
     private var session: CompanionServerSession?
     private var pendingSessions: [UUID: CompanionServerSession] = [:]
+    private var relayOffer: DeviceHarborRelayOffer?
 
     public init(displayName: String = "DeviceHarbor Mac") {
         self.peerID = "mac-\(UUID().uuidString)"
@@ -112,14 +118,48 @@ public final class DeviceHarborCompanionServer: @unchecked Sendable, DeviceHarbo
         channel.start()
     }
 
+    public func connectToHostedRelay(
+        offer: DeviceHarborRelayOffer
+    ) throws {
+        guard let endpoint = offer.webSocketURL else {
+            throw DeviceHarborRelayServerError.invalidEndpoint
+        }
+        let connection = NWConnection(
+            to: NWEndpoint.url(endpoint),
+            using: DeviceHarborChannel.webSocketParameters()
+        )
+        let channel = DeviceHarborChannel(connection: connection, transport: .webSocket)
+        attach(
+            channel,
+            rendezvousID: offer.session.roomID,
+            accessToken: offer.session.accessToken,
+            relayOffer: offer
+        )
+        channel.start()
+    }
+
+    public func setRelayOffer(_ offer: DeviceHarborRelayOffer?) {
+        lock.lock()
+        relayOffer = offer
+        let activeSession = session
+        let waitingSessions = Array(pendingSessions.values)
+        lock.unlock()
+        activeSession?.updateRelayOffer(offer)
+        waitingSessions.forEach { $0.updateRelayOffer(offer) }
+    }
+
     private func accept(_ channel: DeviceHarborChannel) {
-        attach(channel)
+        lock.lock()
+        let offer = relayOffer
+        lock.unlock()
+        attach(channel, relayOffer: offer)
     }
 
     private func attach(
         _ channel: DeviceHarborChannel,
         rendezvousID: String? = nil,
-        accessToken: String? = nil
+        accessToken: String? = nil,
+        relayOffer: DeviceHarborRelayOffer? = nil
     ) {
         let sessionID = UUID()
         let newSession = CompanionServerSession(
@@ -129,6 +169,8 @@ public final class DeviceHarborCompanionServer: @unchecked Sendable, DeviceHarbo
             pairingCode: pairingCode,
             rendezvousID: rendezvousID,
             accessToken: accessToken,
+            transport: rendezvousID == nil ? .localNetwork : .relay,
+            relayOffer: relayOffer,
             onPaired: { [weak self] peerID, session in
                 guard let self else { return }
                 self.lock.lock()
@@ -136,7 +178,7 @@ public final class DeviceHarborCompanionServer: @unchecked Sendable, DeviceHarbo
                 self.session?.close()
                 self.session = session
                 self.lock.unlock()
-                self.onStateChange?(.paired(peerID: peerID))
+                self.onStateChange?(.paired(peerID: peerID, transport: session.transport))
             },
             onClosed: { [weak self] session in
                 guard let self else { return }
@@ -161,6 +203,7 @@ private final class CompanionServerSession: @unchecked Sendable {
     private let pairingCode: String
     private let rendezvousID: String?
     private let accessToken: String?
+    let transport: DeviceHarborCompanionTransport
     private let onPaired: @Sendable (String, CompanionServerSession) -> Void
     private let onClosed: @Sendable (CompanionServerSession) -> Void
     private let lock = NSLock()
@@ -169,6 +212,9 @@ private final class CompanionServerSession: @unchecked Sendable {
     private var openCompletions: [String: @Sendable (Result<any DeviceHarborByteStream, Error>) -> Void] = [:]
     private var didSendRelayJoin = false
     private var didAnnounceHello = false
+    private var heartbeatTimer: DispatchSourceTimer?
+    private var lastHeartbeat = Date()
+    private var relayOffer: DeviceHarborRelayOffer?
 
     init(
         channel: DeviceHarborChannel,
@@ -177,6 +223,8 @@ private final class CompanionServerSession: @unchecked Sendable {
         pairingCode: String,
         rendezvousID: String?,
         accessToken: String?,
+        transport: DeviceHarborCompanionTransport,
+        relayOffer: DeviceHarborRelayOffer?,
         onPaired: @escaping @Sendable (String, CompanionServerSession) -> Void,
         onClosed: @escaping @Sendable (CompanionServerSession) -> Void
     ) {
@@ -186,6 +234,8 @@ private final class CompanionServerSession: @unchecked Sendable {
         self.pairingCode = pairingCode
         self.rendezvousID = rendezvousID
         self.accessToken = accessToken
+        self.transport = transport
+        self.relayOffer = relayOffer
         self.onPaired = onPaired
         self.onClosed = onClosed
     }
@@ -198,9 +248,11 @@ private final class CompanionServerSession: @unchecked Sendable {
             if case .failed = state { self.onClosed(self) }
             if case .ready = state { self.startHandshake() }
         }
+        startHeartbeat()
     }
 
     func close() {
+        stopHeartbeat()
         channel.cancel()
         lock.lock()
         let active = Array(streams.values)
@@ -242,9 +294,15 @@ private final class CompanionServerSession: @unchecked Sendable {
             pairedPeerID = peerID
             lock.unlock()
             channel.send(.pairAccepted(peerID: self.peerID))
+            sendRelayOfferIfNeeded()
             onPaired(peerID, self)
         case .heartbeat:
-            channel.send(DeviceHarborFrame(kind: .heartbeat))
+            lock.lock()
+            lastHeartbeat = Date()
+            lock.unlock()
+            if frame.message == "ping" {
+                channel.send(.heartbeat(message: "pong"))
+            }
         case .streamReady:
             guard let streamID = frame.streamID else { return }
             lock.lock()
@@ -268,9 +326,28 @@ private final class CompanionServerSession: @unchecked Sendable {
             lock.unlock()
             completion?(.failure(DeviceHarborCompanionError.streamUnavailable))
             stream?.finish(frame.message)
-        case .hello, .pairAccepted, .pairRejected, .openStream, .error, .relayJoin:
+        case .hello, .pairAccepted, .pairRejected, .openStream, .error, .relayJoin, .relayOffer:
             break
         }
+    }
+
+    func updateRelayOffer(_ offer: DeviceHarborRelayOffer?) {
+        lock.lock()
+        relayOffer = offer
+        let shouldSend = pairedPeerID != nil
+        lock.unlock()
+        if shouldSend {
+            sendRelayOfferIfNeeded()
+        }
+    }
+
+    private func sendRelayOfferIfNeeded() {
+        guard transport == .localNetwork else { return }
+        lock.lock()
+        let offer = relayOffer
+        lock.unlock()
+        guard let offer else { return }
+        channel.send(.relayOffer(offer))
     }
 
     private func announceHello() {
@@ -296,6 +373,42 @@ private final class CompanionServerSession: @unchecked Sendable {
             channel.send(.relayJoin(rendezvousID: rendezvousID, accessToken: accessToken))
         } else {
             announceHello()
+        }
+    }
+
+    private func startHeartbeat() {
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "dev.deviceharbor.transport.heartbeat"))
+        timer.schedule(deadline: .now() + 5, repeating: 5)
+        timer.setEventHandler { [weak self] in
+            self?.heartbeatTick()
+        }
+        lock.lock()
+        guard heartbeatTimer == nil else {
+            lock.unlock()
+            return
+        }
+        lastHeartbeat = Date()
+        heartbeatTimer = timer
+        lock.unlock()
+        timer.resume()
+    }
+
+    private func stopHeartbeat() {
+        lock.lock()
+        let timer = heartbeatTimer
+        heartbeatTimer = nil
+        lock.unlock()
+        timer?.cancel()
+    }
+
+    private func heartbeatTick() {
+        lock.lock()
+        let isStale = Date().timeIntervalSince(lastHeartbeat) > 15
+        lock.unlock()
+        if isStale {
+            close()
+        } else {
+            channel.send(.heartbeat(message: "ping"))
         }
     }
 
@@ -372,12 +485,14 @@ public final class DeviceHarborCompanionClient: @unchecked Sendable {
     public let displayName: String
     public var onStateChange: (@Sendable (DeviceHarborCompanionState) -> Void)?
     public var onMacHello: (@Sendable (String, String) -> Void)?
+    public var onRelayOffer: (@Sendable (DeviceHarborRelayOffer) -> Void)?
 
     private let localHost: NWEndpoint.Host
     private let queue = DispatchQueue(label: "dev.deviceharbor.transport.client")
     private let lock = NSLock()
     private var channel: DeviceHarborChannel?
     private var paired = false
+    private var transport: DeviceHarborCompanionTransport = .localNetwork
     private var streams: [String: ReverseCoreDeviceStream] = [:]
 
     public init(
@@ -391,14 +506,16 @@ public final class DeviceHarborCompanionClient: @unchecked Sendable {
 
     public func connect(
         to endpoint: NWEndpoint,
+        parameters: NWParameters = .tcp,
+        transport: DeviceHarborChannelTransport = .tcp,
         rendezvousID: String? = nil,
         accessToken: String? = nil
     ) {
         disconnect()
         onStateChange?(.connecting)
 
-        let connection = NWConnection(to: endpoint, using: .tcp)
-        let channel = DeviceHarborChannel(connection: connection, queue: queue)
+        let connection = NWConnection(to: endpoint, using: parameters)
+        let channel = DeviceHarborChannel(connection: connection, queue: queue, transport: transport)
         channel.onStateChange = { [weak self, rendezvousID, accessToken] state in
             guard let self else { return }
             switch state {
@@ -424,6 +541,7 @@ public final class DeviceHarborCompanionClient: @unchecked Sendable {
         lock.lock()
         self.channel = channel
         self.paired = false
+        self.transport = rendezvousID == nil ? .localNetwork : .relay
         lock.unlock()
         channel.start()
     }
@@ -444,6 +562,7 @@ public final class DeviceHarborCompanionClient: @unchecked Sendable {
         let channel = self.channel
         self.channel = nil
         paired = false
+        transport = .localNetwork
         let activeStreams = Array(streams.values)
         streams.removeAll()
         lock.unlock()
@@ -461,9 +580,10 @@ public final class DeviceHarborCompanionClient: @unchecked Sendable {
         case .pairAccepted:
             lock.lock()
             paired = true
+            let transport = self.transport
             lock.unlock()
             if let peerID = frame.peerID {
-                onStateChange?(.paired(peerID: peerID))
+                onStateChange?(.paired(peerID: peerID, transport: transport))
             }
         case .pairRejected:
             onStateChange?(.failed(frame.message ?? "Pairing rejected."))
@@ -483,9 +603,32 @@ public final class DeviceHarborCompanionClient: @unchecked Sendable {
             lock.unlock()
             stream?.close(sendFrame: false)
         case .heartbeat:
-            send(DeviceHarborFrame(kind: .heartbeat))
+            if frame.message == "ping" {
+                send(.heartbeat(message: "pong"))
+            }
         case .error:
             onStateChange?(.failed(frame.message ?? "Transport error."))
+        case .relayOffer:
+            guard let endpoint = frame.relayEndpoint,
+                  let pairingCode = frame.pairingCode,
+                  pairingCode.range(of: #"^\d{6}$"#, options: .regularExpression) != nil,
+                  let roomID = frame.relayRoomID,
+                  let accessToken = frame.relayAccessToken,
+                  let expiresAt = frame.relayExpiresAt else {
+                onStateChange?(.failed("The Mac companion sent an incomplete relay offer."))
+                return
+            }
+            onRelayOffer?(
+                DeviceHarborRelayOffer(
+                    baseURLString: endpoint,
+                    pairingCode: pairingCode,
+                    session: DeviceHarborHostedRelaySession(
+                        roomID: roomID,
+                        accessToken: accessToken,
+                        expiresAt: expiresAt
+                    )
+                )
+            )
         case .pairRequest, .streamReady, .relayReady, .relayJoin:
             break
         }

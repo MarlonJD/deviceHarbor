@@ -2,6 +2,7 @@ import Foundation
 import Network
 @preconcurrency import NetworkExtension
 import Observation
+import Security
 import SwiftUI
 
 @MainActor
@@ -17,31 +18,47 @@ final class CompanionModel {
     var discoveredMacs: [DiscoveredMac] = []
     var selectedMacID: String?
     var pairingCode = ""
-    var relayHost = ""
-    var relayPortText = "49153"
     var status = "Starting discovery…"
     var companionStatus = "Searching for Mac companion…"
     var networkExtensionPrepared = false
     var companionConnectionReady = false
+    var relayOffer: DeviceHarborRelayOffer?
 
     private var browser: NWBrowser?
     private let companionClient = DeviceHarborCompanionClient()
     private var tunnelManager: NETunnelProviderManager?
+    private var relayReconnectTask: Task<Void, Never>?
+    private var usingHostedRelay = false
+    private var relayReconnectAttempts = 0
+
+    init() {
+        if let storedOffer = RelayOfferKeychain.load() {
+            relayOffer = storedOffer
+            pairingCode = storedOffer.pairingCode
+        }
+        configureCompanionClient()
+    }
 
     var canPair: Bool {
         companionConnectionReady && pairingCode.count == 6
     }
 
     var canConnectViaRelay: Bool {
-        !relayHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && UInt16(relayPortText) != nil
-            && pairingCode.count == 6
+        guard let relayOffer else { return false }
+        return !relayOffer.isExpired
     }
 
     var pairingCodeBinding: Binding<String> {
         Binding(
             get: { self.pairingCode },
-            set: { self.pairingCode = String($0.filter { $0.isNumber }.prefix(6)) }
+            set: {
+                self.pairingCode = String($0.filter { $0.isNumber }.prefix(6))
+                if self.pairingCode.count == 6,
+                   self.canConnectViaRelay,
+                   !self.companionConnectionReady {
+                    self.connectViaRelay()
+                }
+            }
         )
     }
 
@@ -96,12 +113,20 @@ final class CompanionModel {
         }
         browser.start(queue: DispatchQueue.main)
         self.browser = browser
+        scheduleHostedRelayReconnect()
     }
 
     func select(_ mac: DiscoveredMac) {
+        relayReconnectTask?.cancel()
+        relayReconnectTask = nil
+        usingHostedRelay = false
         selectedMacID = mac.id
         companionConnectionReady = false
         companionStatus = "Connecting to \(mac.name)…"
+        companionClient.connect(to: mac.endpoint)
+    }
+
+    private func configureCompanionClient() {
         companionClient.onStateChange = { [weak self] state in
             Task { @MainActor in
                 guard let self else { return }
@@ -112,25 +137,47 @@ final class CompanionModel {
                 case .failed(let message):
                     self.companionConnectionReady = false
                     self.companionStatus = "Connection failed: \(message)"
+                    self.usingHostedRelay = false
+                    self.scheduleHostedRelayReconnect()
                 case .connecting:
                     self.companionConnectionReady = false
                     self.companionStatus = "Connecting to Mac companion…"
                 case .waitingForPair:
                     self.companionConnectionReady = true
                     self.companionStatus = "Connected to Mac companion. Enter the pairing code."
-                case .paired:
+                case .paired(_, let transport):
                     self.companionConnectionReady = true
-                    self.companionStatus = "Paired with Mac companion."
+                    self.usingHostedRelay = transport == .relay
+                    self.relayReconnectAttempts = 0
+                    self.companionStatus = transport == .relay
+                        ? "Paired with Mac companion through the DeviceHarbor network."
+                        : "Paired with Mac companion."
                 }
             }
         }
         companionClient.onMacHello = { [weak self] _, name in
             Task { @MainActor in
-                self?.companionConnectionReady = true
-                self?.companionStatus = "Connected to \(name). Enter the pairing code."
+                guard let self else { return }
+                self.companionConnectionReady = true
+                if self.usingHostedRelay && self.pairingCode.count == 6 {
+                    self.companionClient.pair(using: self.pairingCode)
+                    self.status = "Pairing with Mac companion through the DeviceHarbor network…"
+                    self.companionStatus = "Mac companion found through the DeviceHarbor network. Pairing…"
+                } else {
+                    self.companionStatus = "Connected to \(name). Enter the pairing code."
+                }
             }
         }
-        companionClient.connect(to: mac.endpoint)
+        companionClient.onRelayOffer = { [weak self] offer in
+            Task { @MainActor in
+                guard let self else { return }
+                self.relayOffer = offer
+                self.pairingCode = offer.pairingCode
+                RelayOfferKeychain.save(offer)
+                self.status = "Relay session received from the Mac companion."
+                self.scheduleHostedRelayReconnect()
+            }
+        }
     }
 
     func pair() {
@@ -139,27 +186,41 @@ final class CompanionModel {
     }
 
     func connectViaRelay() {
-        let host = relayHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let portValue = UInt16(relayPortText), let port = NWEndpoint.Port(rawValue: portValue) else {
-            status = "Enter a valid DeviceHarbor relay host and TCP port."
+        guard let relayOffer, !relayOffer.isExpired, let endpoint = relayOffer.webSocketURL else {
+            status = "Pair with the Mac companion once on the same network to receive a temporary relay session."
             return
         }
-        guard pairingCode.count == 6 else {
-            status = "Enter the six-digit Mac pairing code before connecting to the relay."
-            return
-        }
-        let endpoint = NWEndpoint.hostPort(
-            host: NWEndpoint.Host(host),
-            port: port
-        )
-        companionClient.connect(
-            to: endpoint,
-            rendezvousID: pairingCode,
-            accessToken: pairingCode
-        )
+        relayReconnectTask?.cancel()
+        relayReconnectTask = nil
+        usingHostedRelay = true
         companionConnectionReady = false
-        companionStatus = "Connecting to DeviceHarbor relay \(host):\(portValue)…"
-        status = "Connecting to DeviceHarbor relay \(host):\(portValue)…"
+        companionStatus = "Connecting to the DeviceHarbor network…"
+        status = "Connecting to the DeviceHarbor network…"
+        self.companionClient.connect(
+            to: NWEndpoint.url(endpoint),
+            parameters: DeviceHarborChannel.webSocketParameters(),
+            transport: .webSocket,
+            rendezvousID: relayOffer.session.roomID,
+            accessToken: relayOffer.session.accessToken
+        )
+    }
+
+    private func scheduleHostedRelayReconnect() {
+        guard canConnectViaRelay,
+              !companionConnectionReady,
+              !usingHostedRelay,
+              relayReconnectTask == nil,
+              relayReconnectAttempts < 3 else {
+            return
+        }
+        relayReconnectAttempts += 1
+        relayReconnectTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.relayReconnectTask = nil
+            guard !self.companionConnectionReady else { return }
+            self.connectViaRelay()
+        }
     }
 
     func prepareNetworkExtension() {
@@ -216,6 +277,46 @@ final class CompanionModel {
         }
     }
 
+}
+
+private enum RelayOfferKeychain {
+    private static let service = "dev.deviceharbor.companion"
+    private static let account = "temporary-relay-offer"
+
+    static func load() -> DeviceHarborRelayOffer? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else {
+            return nil
+        }
+        return try? JSONDecoder().decode(DeviceHarborRelayOffer.self, from: data)
+    }
+
+    static func save(_ offer: DeviceHarborRelayOffer) {
+        guard let data = try? JSONEncoder().encode(offer) else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = query
+            item.merge(attributes) { _, newValue in newValue }
+            _ = SecItemAdd(item as CFDictionary, nil)
+        }
+    }
 }
 
 private final class TunnelProviderManagerBox: @unchecked Sendable {

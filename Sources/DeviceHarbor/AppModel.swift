@@ -21,8 +21,6 @@ final class AppModel: ObservableObject {
     @Published var isLoadingWatchPairings = false
     @Published var companionState: DeviceHarborCompanionState = .stopped
     @Published var companionPairingCode = ""
-    @Published var relayHost = ""
-    @Published var relayPort: UInt16 = 49_153
 
     private let deviceClient: DeviceCtlClient
     private let profileStore: any ProfileStoring
@@ -40,7 +38,8 @@ final class AppModel: ObservableObject {
         self.companionPairingCode = companionServer.pairingCode
         companionServer.onStateChange = { [weak self] state in
             Task { @MainActor [weak self] in
-                self?.companionState = state
+                guard let self else { return }
+                self.companionState = state
             }
         }
         do {
@@ -49,6 +48,7 @@ final class AppModel: ObservableObject {
         } catch {
             companionState = .failed(error.localizedDescription)
         }
+        provisionEphemeralRelay()
         do {
             profiles = try profileStore.load()
         } catch {
@@ -247,22 +247,34 @@ final class AppModel: ObservableObject {
         statusMessage = "Relay stopped."
     }
 
-    func connectCompanionRelay() {
-        let host = relayHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !host.isEmpty else {
-            statusMessage = "Enter a DeviceHarbor relay host first."
-            return
-        }
-        do {
-            try companionServer.connectToRelay(
-                host: host,
-                port: relayPort,
-                rendezvousID: companionPairingCode,
-                accessToken: companionPairingCode
-            )
-            statusMessage = "Connecting Mac to DeviceHarbor relay \(host):\(relayPort)…"
-        } catch {
-            statusMessage = error.localizedDescription
+    private func provisionEphemeralRelay() {
+        let provisioner = DeviceHarborEphemeralRelayProvisioner()
+        let pairingCode = companionPairingCode
+        Task { @MainActor [weak self, provisioner] in
+            let result = await Task.detached(priority: .utility) {
+                do {
+                    return Result<DeviceHarborRelayOffer, RelayProvisioningFailure>.success(
+                        try provisioner.provision(pairingCode: pairingCode)
+                    )
+                } catch {
+                    return Result<DeviceHarborRelayOffer, RelayProvisioningFailure>.failure(
+                        RelayProvisioningFailure(message: error.localizedDescription)
+                    )
+                }
+            }.value
+            guard let self else { return }
+            switch result {
+            case .success(let offer):
+                companionServer.setRelayOffer(offer)
+                do {
+                    try companionServer.connectToHostedRelay(offer: offer)
+                    statusMessage = "Temporary DeviceHarbor relay is ready. Pair code \(companionPairingCode) is available to the iPhone companion."
+                } catch {
+                    statusMessage = error.localizedDescription
+                }
+            case .failure(let failure):
+                statusMessage = "Temporary DeviceHarbor relay unavailable: \(failure.message)"
+            }
         }
     }
 
@@ -366,6 +378,10 @@ final class AppModel: ObservableObject {
 }
 
 private struct BackgroundFailure: Error, Sendable {
+    let message: String
+}
+
+private struct RelayProvisioningFailure: Error, Sendable {
     let message: String
 }
 

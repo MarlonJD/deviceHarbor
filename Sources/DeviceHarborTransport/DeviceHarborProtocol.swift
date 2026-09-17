@@ -13,6 +13,7 @@ public enum DeviceHarborFrameKind: String, Codable, Sendable {
     case error
     case relayJoin
     case relayReady
+    case relayOffer
 }
 
 public struct DeviceHarborFrame: Codable, Equatable, Sendable {
@@ -27,6 +28,10 @@ public struct DeviceHarborFrame: Codable, Equatable, Sendable {
     public let message: String?
     public let rendezvousID: String?
     public let accessToken: String?
+    public let relayEndpoint: String?
+    public let relayRoomID: String?
+    public let relayAccessToken: String?
+    public let relayExpiresAt: Int64?
 
     public init(
         kind: DeviceHarborFrameKind,
@@ -39,7 +44,11 @@ public struct DeviceHarborFrame: Codable, Equatable, Sendable {
         payload: Data? = nil,
         message: String? = nil,
         rendezvousID: String? = nil,
-        accessToken: String? = nil
+        accessToken: String? = nil,
+        relayEndpoint: String? = nil,
+        relayRoomID: String? = nil,
+        relayAccessToken: String? = nil,
+        relayExpiresAt: Int64? = nil
     ) {
         self.kind = kind
         self.protocolVersion = protocolVersion
@@ -52,6 +61,10 @@ public struct DeviceHarborFrame: Codable, Equatable, Sendable {
         self.message = message
         self.rendezvousID = rendezvousID
         self.accessToken = accessToken
+        self.relayEndpoint = relayEndpoint
+        self.relayRoomID = relayRoomID
+        self.relayAccessToken = relayAccessToken
+        self.relayExpiresAt = relayExpiresAt
     }
 
     public static func hello(peerID: String, displayName: String) -> Self {
@@ -86,6 +99,10 @@ public struct DeviceHarborFrame: Codable, Equatable, Sendable {
         Self(kind: .closeStream, streamID: streamID, message: message)
     }
 
+    public static func heartbeat(message: String) -> Self {
+        Self(kind: .heartbeat, message: message)
+    }
+
     public static func error(message: String) -> Self {
         Self(kind: .error, message: message)
     }
@@ -96,6 +113,17 @@ public struct DeviceHarborFrame: Codable, Equatable, Sendable {
 
     public static func relayReady(rendezvousID: String) -> Self {
         Self(kind: .relayReady, rendezvousID: rendezvousID)
+    }
+
+    public static func relayOffer(_ offer: DeviceHarborRelayOffer) -> Self {
+        Self(
+            kind: .relayOffer,
+            pairingCode: offer.pairingCode,
+            relayEndpoint: offer.baseURLString,
+            relayRoomID: offer.session.roomID,
+            relayAccessToken: offer.session.accessToken,
+            relayExpiresAt: offer.session.expiresAt
+        )
     }
 }
 
@@ -128,6 +156,7 @@ public enum DeviceHarborPairing {
 public enum DeviceHarborRelayServerError: LocalizedError, Sendable {
     case invalidPort
     case listenerFailed(String)
+    case invalidEndpoint
 
     public var errorDescription: String? {
         switch self {
@@ -135,6 +164,84 @@ public enum DeviceHarborRelayServerError: LocalizedError, Sendable {
             "The DeviceHarbor relay port is invalid."
         case .listenerFailed(let message):
             "The DeviceHarbor relay could not start: \(message)"
+        case .invalidEndpoint:
+            "The DeviceHarbor hosted relay endpoint is invalid or not configured."
         }
     }
+}
+
+public struct DeviceHarborHostedRelaySession: Codable, Equatable, Sendable {
+    public let roomID: String
+    public let accessToken: String
+    public let expiresAt: Int64
+
+    public init(roomID: String, accessToken: String, expiresAt: Int64) {
+        self.roomID = roomID
+        self.accessToken = accessToken
+        self.expiresAt = expiresAt
+    }
+}
+
+public struct DeviceHarborRelayOffer: Codable, Equatable, Sendable {
+    public let baseURLString: String
+    public let pairingCode: String
+    public let session: DeviceHarborHostedRelaySession
+
+    public init(
+        baseURLString: String,
+        pairingCode: String,
+        session: DeviceHarborHostedRelaySession
+    ) {
+        self.baseURLString = baseURLString
+        self.pairingCode = pairingCode
+        self.session = session
+    }
+
+    public init(
+        baseURL: URL,
+        pairingCode: String,
+        session: DeviceHarborHostedRelaySession
+    ) {
+        self.init(
+            baseURLString: baseURL.absoluteString,
+            pairingCode: pairingCode,
+            session: session
+        )
+    }
+
+    public var webSocketURL: URL? {
+        guard let baseURL = URL(string: baseURLString) else { return nil }
+        return DeviceHarborHostedRelay.roomURL(baseURL: baseURL, roomID: session.roomID)
+    }
+
+    public var isExpired: Bool {
+        session.expiresAt <= Int64(Date().timeIntervalSince1970 * 1000)
+    }
+}
+
+public enum DeviceHarborHostedRelay {
+    public static func roomURL(baseURL: URL, roomID: String) -> URL? {
+        let roomID = roomID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard roomID.range(of: #"^[A-Za-z0-9_-]{6,64}$"#, options: .regularExpression) != nil else {
+            return nil
+        }
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        let basePath = components?.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? ""
+        let path = [basePath, "v1", "rooms", roomID]
+            .filter { !$0.isEmpty }
+            .joined(separator: "/")
+        components?.path = "/\(path)"
+        switch components?.scheme?.lowercased() {
+        case "https":
+            components?.scheme = "wss"
+        case "http":
+            components?.scheme = "ws"
+        case "wss", "ws":
+            break
+        default:
+            return nil
+        }
+        return components?.url
+    }
+
 }

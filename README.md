@@ -99,13 +99,14 @@ Mac DeviceHarbor
 Xcode / devicectl / CoreDevice
 ```
 
-The first local slice uses direct Bonjour discovery. The prototype relay can
-also accept outbound Mac and iPhone sessions for a different-network test:
-enter the relay host and port in both companion UIs, use the Mac’s displayed
-six-digit code on the iPhone, and connect both sides. The next transport
-increment is production per-user keys, reconnects, keepalives, and NAT
-traversal. A temporary tunnel may bootstrap that service during development,
-but a generic HTTP tunnel is not the CoreDevice data plane.
+The first local slice uses direct Bonjour discovery. The hosted relay accepts
+outbound Mac and iPhone sessions for a different-network test. At runtime the
+Mac companion deploys a fresh temporary Worker with `wrangler deploy
+--temporary`, generates a random room and access token, and sends the resulting
+relay offer to the locally paired iPhone companion. The iPhone keeps that offer
+in its device-only Keychain and can reconnect over outbound WSS after moving to another Wi-Fi;
+no Worker URL is stored in the app build and no per-connection app rebuild is
+required. A generic HTTP tunnel is not the CoreDevice data plane.
 
 The iOS Network Extension is deliberately kept separate from the companion
 control session. Apple’s [Packet Tunnel guidance](https://developer.apple.com/documentation/technotes/tn3120-expected-use-cases-for-network-extension-packet-tunnel-providers) says a packet tunnel is for routing packets through a tunnel server, not for hosting a general-purpose inbound listener or proxy. The production design must therefore keep the iPhone session outbound and use the extension only where the approved entitlement and transport require it.

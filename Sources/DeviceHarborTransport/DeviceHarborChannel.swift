@@ -8,8 +8,14 @@ public enum DeviceHarborChannelState: Equatable, Sendable {
     case cancelled
 }
 
+public enum DeviceHarborChannelTransport: Equatable, Sendable {
+    case tcp
+    case webSocket
+}
+
 public final class DeviceHarborChannel: @unchecked Sendable {
     public let connection: NWConnection
+    public let transport: DeviceHarborChannelTransport
     public var onStateChange: (@Sendable (DeviceHarborChannelState) -> Void)?
     public var onFrame: (@Sendable (DeviceHarborFrame) -> Void)?
 
@@ -19,9 +25,26 @@ public final class DeviceHarborChannel: @unchecked Sendable {
     private var receiveBuffer = Data()
     private var didStart = false
 
-    public init(connection: NWConnection, queue: DispatchQueue? = nil) {
+    public init(
+        connection: NWConnection,
+        queue: DispatchQueue? = nil,
+        transport: DeviceHarborChannelTransport = .tcp
+    ) {
         self.connection = connection
+        self.transport = transport
         self.queue = queue ?? DispatchQueue(label: "dev.deviceharbor.transport.channel")
+    }
+
+    public static func webSocketParameters() -> NWParameters {
+        let parameters = NWParameters(
+            tls: NWProtocolTLS.Options(),
+            tcp: NWProtocolTCP.Options()
+        )
+        let webSocket = NWProtocolWebSocket.Options()
+        webSocket.autoReplyPing = true
+        webSocket.maximumMessageSize = 2 * 1024 * 1024
+        parameters.defaultProtocolStack.applicationProtocols.insert(webSocket, at: 0)
+        return parameters
     }
 
     public func start() {
@@ -56,7 +79,26 @@ public final class DeviceHarborChannel: @unchecked Sendable {
             guard let self else { return }
             do {
                 let data = try DeviceHarborWireCodec.encode(frame)
-                self.connection.send(content: data, completion: .contentProcessed { _ in })
+                let completion: NWConnection.SendCompletion = .contentProcessed { [weak self] error in
+                    if let error {
+                        self?.onStateChange?(.failed(error.localizedDescription))
+                    }
+                }
+                if self.transport == .webSocket {
+                    let metadata = NWProtocolWebSocket.Metadata(opcode: .binary)
+                    let context = NWConnection.ContentContext(
+                        identifier: "DeviceHarborFrame",
+                        metadata: [metadata]
+                    )
+                    self.connection.send(
+                        content: data,
+                        contentContext: context,
+                        isComplete: true,
+                        completion: completion
+                    )
+                } else {
+                    self.connection.send(content: data, completion: completion)
+                }
             } catch {
                 self.onStateChange?(.failed(error.localizedDescription))
             }
@@ -68,32 +110,42 @@ public final class DeviceHarborChannel: @unchecked Sendable {
     }
 
     private func receiveNext() {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
-            if let data, !data.isEmpty {
-                self.lock.lock()
-                self.receiveBuffer.append(data)
-                do {
-                    let frames = try DeviceHarborWireCodec.decodeLines(from: &self.receiveBuffer)
-                    self.lock.unlock()
-                    frames.forEach { self.onFrame?($0) }
-                } catch {
-                    self.lock.unlock()
-                    self.onStateChange?(.failed(error.localizedDescription))
-                    self.connection.cancel()
-                    return
-                }
+        if transport == .webSocket {
+            connection.receiveMessage { [weak self] data, _, _, error in
+                self?.handleReceived(data: data, isComplete: data == nil, error: error)
             }
-            if isComplete || error != nil {
-                if let error {
-                    self.onStateChange?(.failed(error.localizedDescription))
-                } else {
-                    self.onStateChange?(.cancelled)
-                }
+            return
+        }
+
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+            self?.handleReceived(data: data, isComplete: isComplete, error: error)
+        }
+    }
+
+    private func handleReceived(data: Data?, isComplete: Bool, error: NWError?) {
+        if let data, !data.isEmpty {
+            lock.lock()
+            receiveBuffer.append(data)
+            do {
+                let frames = try DeviceHarborWireCodec.decodeLines(from: &receiveBuffer)
+                lock.unlock()
+                frames.forEach { onFrame?($0) }
+            } catch {
+                lock.unlock()
+                onStateChange?(.failed(error.localizedDescription))
+                connection.cancel()
                 return
             }
-            self.receiveNext()
         }
+        if isComplete || error != nil {
+            if let error {
+                onStateChange?(.failed(error.localizedDescription))
+            } else {
+                onStateChange?(.cancelled)
+            }
+            return
+        }
+        receiveNext()
     }
 }
 

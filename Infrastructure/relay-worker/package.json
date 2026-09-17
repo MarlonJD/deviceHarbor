@@ -1,0 +1,14 @@
+{
+  "name": "deviceharbor-relay-worker",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "typescript": "latest",
+    "wrangler": "latest"
+  },
+  "scripts": {
+    "check": "tsc --noEmit && wrangler deploy --dry-run --minify",
+    "types": "wrangler types",
+    "deploy": "wrangler deploy"
+  }
+}

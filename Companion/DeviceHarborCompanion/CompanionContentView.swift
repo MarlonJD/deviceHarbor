@@ -7,18 +7,17 @@ struct CompanionContentView: View {
         NavigationStack {
             Form {
                 Section("Remote relay (optional)") {
-                    Text("If the Mac and iPhone are on different Wi-Fi networks, enter the same DeviceHarbor relay host and port on both sides.")
+                    Text("The Mac creates a temporary relay Worker at runtime after launch. Pair once on the same network; the iPhone then receives the temporary endpoint and can reconnect from another Wi-Fi.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                    TextField("Relay host", text: Binding(
-                        get: { model.relayHost },
-                        set: { model.relayHost = $0 }
-                    ))
-                    TextField("Relay TCP port", text: Binding(
-                        get: { model.relayPortText },
-                        set: { model.relayPortText = String($0.filter { $0.isNumber }.prefix(5)) }
-                    ))
-                    Button("Connect via relay", systemImage: "arrow.up.right") {
+                    if model.canConnectViaRelay {
+                        Label("Temporary relay session ready.", systemImage: "checkmark.shield")
+                            .foregroundStyle(.green)
+                    } else {
+                        Label("No temporary relay session received yet.", systemImage: "network.slash")
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("Connect via temporary relay", systemImage: "arrow.up.right") {
                         model.connectViaRelay()
                     }
                     .disabled(!model.canConnectViaRelay)

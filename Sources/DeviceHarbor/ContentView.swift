@@ -110,15 +110,16 @@ private struct CompanionStatusBar: View {
     private var companionDescription: String {
         switch model.companionState {
         case .stopped:
-            "Stopped"
+            return "Stopped"
         case .connecting:
-            "Connecting to iPhone companion…"
+            return "Connecting to iPhone companion…"
         case .waitingForPair:
-            "Advertising on the local network; enter the code in the iPhone companion."
-        case .paired(let peerID):
-            "Paired with \(peerID)."
+            return "Advertising on the local network; enter the code in the iPhone companion."
+        case .paired(let peerID, let transport):
+            let path = transport == .relay ? "relay" : "local network"
+            return "Paired with \(peerID) via \(path)."
         case .failed(let message):
-            "Failed: \(message)"
+            return "Failed: \(message)"
         }
     }
 }
@@ -339,20 +340,10 @@ struct ProfileDetailView: View {
 
     var body: some View {
         Form {
-            Section("DeviceHarbor relay (optional)") {
-                Text("For different Wi-Fi networks, both companions connect out to the same DeviceHarbor relay. This development build uses the pairing code as the temporary room token.")
+            Section("DeviceHarbor transport") {
+                Text("For different Wi-Fi networks, the Mac creates a temporary DeviceHarbor relay Worker at runtime. The endpoint is sent to the paired iPhone companion; no address or rebuild is required.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                TextField("Relay host", text: $model.relayHost)
-                HStack {
-                    TextField("Relay port", value: $model.relayPort, format: .number)
-                    Text("TCP")
-                        .foregroundStyle(.secondary)
-                }
-                Button("Connect Mac to relay", systemImage: "arrow.up.right") {
-                    model.connectCompanionRelay()
-                }
-                .disabled(model.relayHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
             Section {
