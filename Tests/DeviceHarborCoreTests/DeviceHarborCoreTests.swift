@@ -129,6 +129,27 @@ final class DeviceHarborCoreTests: XCTestCase {
         XCTAssertEqual(command.arguments.suffix(2), ["platform=iOS", "udid=PHONE-UDID"])
     }
 
+    func testParsesBonjourZoneServiceAndEscapedInstanceName() {
+        let zone = """
+        ; dns-sd -Z output is a DNS-SD zone snapshot
+        Burak\\032iPhoneu._remotepairing._tcp.local. SRV 0 0 49152 Burak-iPhoneu.local.
+        Burak\\032iPhoneu._remotepairing._tcp.local. TXT "platform=iOS" "udid=PHONE-UDID" "paired"
+        """
+
+        let services = BonjourZoneParser.parse(
+            zone,
+            serviceType: "_remotepairing._tcp",
+            domain: "local."
+        )
+
+        XCTAssertEqual(services.count, 1)
+        XCTAssertEqual(services[0].instanceName, "Burak iPhoneu")
+        XCTAssertEqual(services[0].remoteHost, "Burak-iPhoneu.local.")
+        XCTAssertEqual(services[0].remotePort, 49152)
+        XCTAssertEqual(services[0].textRecords["platform"], "iOS")
+        XCTAssertEqual(services[0].textRecords["paired"], "")
+    }
+
     func testProfileRoundTripDoesNotAddCredentials() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("deviceharbor-tests-\(UUID().uuidString)", isDirectory: true)

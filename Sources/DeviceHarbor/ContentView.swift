@@ -235,6 +235,8 @@ struct ProfileDetailView: View {
     @EnvironmentObject private var model: AppModel
     let profile: DeviceProfile
     @State private var draft: DeviceProfile
+    @State private var isCapturing = false
+    @State private var captureMessage = ""
 
     init(profile: DeviceProfile) {
         self.profile = profile
@@ -296,6 +298,33 @@ struct ProfileDetailView: View {
                 Text("Known Xcode 27 device services include _remotepairing._tcp, _remoted._tcp, and _apple-mobdev2._tcp. Add one profile service per captured record.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                HStack {
+                    Button(isCapturing ? "Capturing…" : "Capture local records", systemImage: "dot.radiowaves.left.and.right") {
+                        isCapturing = true
+                        let remoteAddress = draft.services.first?.remoteAddress ?? ""
+                        model.captureLocalBonjourServices { outcome in
+                            isCapturing = false
+                            switch outcome {
+                            case .success(let services):
+                                guard !services.isEmpty else {
+                                    captureMessage = "No matching records found on this local network."
+                                    return
+                                }
+                                draft.services = services.map { $0.makeRelayService(remoteAddress: remoteAddress) }
+                                captureMessage = "Loaded \(services.count) record(s); enter the private address if needed, then save."
+                            case .failure(let message):
+                                captureMessage = message
+                            }
+                        }
+                    }
+                    .disabled(isCapturing)
+                    if !captureMessage.isEmpty {
+                        Text(captureMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Section {

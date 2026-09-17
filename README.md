@@ -18,6 +18,7 @@ The current increment provides:
 - a typed `devicectl` adapter for listing, pairing, installing, and launching;
 - a profile store that contains endpoints and Bonjour records, never pairing
   secrets;
+- bounded `dns-sd -Z` capture and a parser for Xcode 27 service families;
 - a TCP relay and `/usr/bin/dns-sd -P` Bonjour proxy publisher;
 - initial iPhone and Apple Watch service-model support;
 - deterministic parser, command, profile, and Bonjour command tests.

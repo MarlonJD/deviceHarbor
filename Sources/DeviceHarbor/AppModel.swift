@@ -178,6 +178,39 @@ final class AppModel: ObservableObject {
         statusMessage = "Relay stopped."
     }
 
+    func captureLocalBonjourServices(
+        duration: TimeInterval = 2,
+        completion: @escaping @MainActor (BonjourCaptureOutcome) -> Void
+    ) {
+        statusMessage = "Capturing local Xcode Bonjour records…"
+        Task { [weak self] in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                do {
+                    var services: [CapturedBonjourService] = []
+                    for serviceType in BonjourServiceFamilies.xcode27 {
+                        services.append(contentsOf: try BonjourCapture().capture(
+                            serviceType: serviceType,
+                            duration: duration
+                        ))
+                    }
+                    return BonjourCaptureOutcome.success(services)
+                } catch {
+                    return BonjourCaptureOutcome.failure(error.localizedDescription)
+                }
+            }.value
+            guard let self else { return }
+            switch outcome {
+            case .success(let services):
+                statusMessage = services.isEmpty
+                    ? "No local Xcode Bonjour records were captured."
+                    : "Captured \(services.count) local Bonjour service(s)."
+            case .failure(let message):
+                statusMessage = message
+            }
+            completion(outcome)
+        }
+    }
+
     func installApp(at url: URL, for profile: DeviceProfile) {
         let client = deviceClient
         let identifier = profile.deviceIdentifier
@@ -244,6 +277,11 @@ final class AppModel: ObservableObject {
 
 private struct BackgroundFailure: Error, Sendable {
     let message: String
+}
+
+enum BonjourCaptureOutcome: Sendable {
+    case success([CapturedBonjourService])
+    case failure(String)
 }
 
 enum BackgroundResult: Sendable {
