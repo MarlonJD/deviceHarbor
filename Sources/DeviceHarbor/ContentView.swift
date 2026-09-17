@@ -291,6 +291,21 @@ struct ProfileDetailView: View {
             Section {
                 TextField("Display name", text: $draft.displayName)
                 TextField("CoreDevice identifier or name", text: $draft.deviceIdentifier)
+                if let device = model.devices.first(where: {
+                    $0.isPhysical && ($0.platformKind == draft.platform || draft.deviceIdentifier.isEmpty)
+                }) {
+                    Button("Use connected \(device.name)", systemImage: "link") {
+                        draft.deviceIdentifier = device.identifier
+                        draft.platform = device.platformKind
+                        if draft.displayName == "New Device" || draft.displayName.isEmpty {
+                            draft.displayName = device.name
+                        }
+                    }
+                    Text("CoreDevice: \(device.identifier)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
                 Picker("Platform", selection: $draft.platform) {
                     ForEach(DevicePlatform.allCases, id: \.self) { platform in
                         Text(platform.displayName).tag(platform)
@@ -303,6 +318,9 @@ struct ProfileDetailView: View {
                 }
                 TextField("Local advertised address", text: $draft.advertisedAddress)
                     .help("The Mac address advertised to Xcode; 127.0.0.1 is useful for local tests.")
+                Text("Remote mesh address belongs to the iPhone/Watch side. The local advertised address belongs to this Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             } header: {
                 DetailHeader(title: draft.displayName, subtitle: "Saved relay profile", systemImage: "network")
             }
