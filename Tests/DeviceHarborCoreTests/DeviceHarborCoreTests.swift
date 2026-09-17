@@ -179,6 +179,11 @@ final class DeviceHarborCoreTests: XCTestCase {
         XCTAssertTrue(peers[1].online)
     }
 
+    func testReadsTailscaleBackendState() {
+        let output = #"{"BackendState":"NeedsLogin","Self":{"HostName":"mac"}}"#
+        XCTAssertEqual(TailscaleStatusParser.backendState(output), "NeedsLogin")
+    }
+
     func testReachabilityRejectsMissingAddressAndPortWithoutOpeningAConnection() {
         let tester = TCPReachabilityTester()
 

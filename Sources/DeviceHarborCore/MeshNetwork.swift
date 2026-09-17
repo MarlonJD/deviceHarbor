@@ -41,19 +41,30 @@ public enum MeshResolutionOutcome: Sendable {
 
 public struct MeshEndpointResolver: @unchecked Sendable {
     private let runner: any CommandRunning
+    private let fileManager: FileManager
 
-    public init(runner: any CommandRunning = ProcessCommandRunner()) {
+    public init(
+        runner: any CommandRunning = ProcessCommandRunner(),
+        fileManager: FileManager = .default
+    ) {
         self.runner = runner
+        self.fileManager = fileManager
     }
 
     public func resolve(provider: MeshProvider, matching query: String) throws -> String {
         switch provider {
         case .tailscale:
+            let executable = tailscaleExecutable()
             let result = try runner.run(
-                CommandSpec(executable: "/usr/bin/env", arguments: ["tailscale", "status", "--json"])
+                CommandSpec(executable: executable.path, arguments: executable.usesEnv
+                    ? ["tailscale", "status", "--json"]
+                    : ["status", "--json"])
             )
             guard result.succeeded else {
                 throw MeshNetworkError.commandFailed(result.output.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+            if TailscaleStatusParser.backendState(result.output)?.caseInsensitiveCompare("NeedsLogin") == .orderedSame {
+                throw MeshNetworkError.commandFailed("Tailscale is installed but not signed in on this Mac.")
             }
             let peers = try TailscaleStatusParser.parse(result.output)
             let normalizedQuery = query.lowercased()
@@ -70,9 +81,27 @@ public struct MeshEndpointResolver: @unchecked Sendable {
             throw MeshNetworkError.unsupportedProvider(provider)
         }
     }
+
+    private func tailscaleExecutable() -> (path: String, usesEnv: Bool) {
+        let candidates = [
+            "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+            "/opt/homebrew/bin/tailscale",
+            "/usr/local/bin/tailscale"
+        ]
+        if let path = candidates.first(where: { fileManager.isExecutableFile(atPath: $0) }) {
+            return (path, false)
+        }
+        return ("/usr/bin/env", true)
+    }
 }
 
 public enum TailscaleStatusParser {
+    public static func backendState(_ output: String) -> String? {
+        guard let data = output.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return root["BackendState"] as? String
+    }
+
     public static func parse(_ output: String) throws -> [MeshPeer] {
         let data = Data(output.utf8)
         let object: Any

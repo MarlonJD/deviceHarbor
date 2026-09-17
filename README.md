@@ -76,8 +76,8 @@ controls.
 
 ### Transport choices
 
-- `Tailscale`: install and sign in on both Mac and iPhone; DeviceHarbor can
-  resolve the iPhone peer when the Mac CLI is available.
+- `Tailscale`: install and sign in on both Mac and iPhone; DeviceHarbor checks
+  the bundled macOS CLI as well as PATH and reports a clear sign-in state.
 - `ZeroTier` and `NetBird`: install on both devices and enter the assigned
   iPhone address manually.
 - `Manual IP`: no overlay app is required, but the address must already be
