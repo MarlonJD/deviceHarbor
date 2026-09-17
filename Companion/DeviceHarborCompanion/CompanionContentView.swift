@@ -81,7 +81,7 @@ struct CompanionContentView: View {
                 }
 
                 Section("Reverse CoreDevice") {
-                    Text("When paired, the Mac can request a CoreDevice stream. The companion opens that local service and returns bytes over the DeviceHarbor session.")
+                    Text("When private transport starts, the Network Extension owns the outbound relay session. CoreDevice stream requests from the Mac are opened on the iPhone and returned over that background-capable session.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }

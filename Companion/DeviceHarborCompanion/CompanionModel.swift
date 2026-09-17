@@ -235,7 +235,7 @@ final class CompanionModel {
             }
 
             let manager = TunnelProviderManagerBox(managers?.first ?? NETunnelProviderManager())
-            Task { @MainActor [weak self, manager] in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 let configuration = NETunnelProviderProtocol()
                 configuration.providerBundleIdentifier = "dev.deviceharbor.companion.network-extension"
@@ -265,15 +265,41 @@ final class CompanionModel {
             status = "Prepare the Network Extension first."
             return
         }
+        guard let relayOffer, !relayOffer.isExpired else {
+            status = "Pair with the Mac companion to receive a current temporary relay session first."
+            return
+        }
+        guard let relayData = try? JSONEncoder().encode(relayOffer) else {
+            status = "The temporary relay session could not be encoded for the Network Extension."
+            return
+        }
         guard let session = manager.connection as? NETunnelProviderSession else {
             status = "Network Extension session is unavailable."
             return
         }
-        do {
-            try session.startVPNTunnel()
-            status = "Private transport starting; approve the system prompt if shown."
-        } catch {
-            status = "Network Extension start failed: \(error.localizedDescription)"
+        let configuration = NETunnelProviderProtocol()
+        configuration.providerBundleIdentifier = "dev.deviceharbor.companion.network-extension"
+        configuration.serverAddress = "DeviceHarbor"
+        configuration.providerConfiguration = [
+            "transport": "reverse-session",
+            "relayOffer": relayData
+        ]
+        manager.protocolConfiguration = configuration
+        manager.saveToPreferences { [weak self] error in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let error {
+                    self.status = "Network Extension save failed: \(error.localizedDescription)"
+                    return
+                }
+                self.companionClient.disconnect()
+                do {
+                    try session.startVPNTunnel()
+                    self.status = "Private transport starting; approve the VPN prompt if shown."
+                } catch {
+                    self.status = "Network Extension start failed: \(error.localizedDescription)"
+                }
+            }
         }
     }
 

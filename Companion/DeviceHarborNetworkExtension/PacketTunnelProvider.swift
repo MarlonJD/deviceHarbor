@@ -1,13 +1,45 @@
+import Foundation
+import Network
 @preconcurrency import NetworkExtension
+
+private enum PacketTunnelError: LocalizedError, Sendable {
+    case missingRelayOffer
+    case invalidRelayOffer
+    case relayFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingRelayOffer:
+            return "DeviceHarbor has no relay offer configured for the Network Extension."
+        case .invalidRelayOffer:
+            return "DeviceHarbor received an invalid or expired relay offer."
+        case .relayFailed(let message):
+            return "DeviceHarbor relay failed: \(message)"
+        }
+    }
+}
 
 final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     private var isRunning = false
+    private var companionClient: DeviceHarborCompanionClient?
 
     override func startTunnel(
         options: [String: NSObject]?,
         completionHandler: @escaping (Error?) -> Void
     ) {
-        let completion = ErrorCompletion(completionHandler)
+        guard let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?.providerConfiguration,
+              let relayData = providerConfiguration["relayOffer"] as? Data else {
+            completionHandler(PacketTunnelError.missingRelayOffer)
+            return
+        }
+        guard let offer = try? JSONDecoder().decode(DeviceHarborRelayOffer.self, from: relayData),
+              !offer.isExpired,
+              let endpoint = offer.webSocketURL else {
+            completionHandler(PacketTunnelError.invalidRelayOffer)
+            return
+        }
+
+        let completion = CompletionGate(completionHandler)
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "deviceharbor")
         let ipv4 = NEIPv4Settings(
             addresses: ["198.18.0.2"],
@@ -21,16 +53,44 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
 
         setTunnelNetworkSettings(settings) { [weak self, completion] error in
             guard let self else {
-                completion.call(error)
+                completion.finish(error)
                 return
             }
             if let error {
-                completion.call(error)
+                completion.finish(error)
                 return
             }
-            self.isRunning = true
-            self.readPackets()
-            completion.call(nil)
+
+            let client = DeviceHarborCompanionClient()
+            client.onMacHello = { [weak self] _, _ in
+                self?.companionClient?.pair(using: offer.pairingCode)
+            }
+            client.onStateChange = { [weak self, completion] state in
+                guard let self else { return }
+                switch state {
+                case .paired:
+                    self.isRunning = true
+                    completion.finish(nil)
+                case .failed(let message):
+                    self.isRunning = false
+                    self.companionClient?.disconnect()
+                    completion.finish(PacketTunnelError.relayFailed(message))
+                case .stopped:
+                    if !self.isRunning {
+                        completion.finish(PacketTunnelError.relayFailed("The companion session stopped before pairing."))
+                    }
+                case .connecting, .waitingForPair:
+                    break
+                }
+            }
+            self.companionClient = client
+            client.connect(
+                to: NWEndpoint.url(endpoint),
+                parameters: DeviceHarborChannel.webSocketParameters(),
+                transport: .webSocket,
+                rendezvousID: offer.session.roomID,
+                accessToken: offer.session.accessToken
+            )
         }
     }
 
@@ -39,6 +99,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         completionHandler: @escaping () -> Void
     ) {
         isRunning = false
+        companionClient?.disconnect()
+        companionClient = nil
         completionHandler()
     }
 
@@ -46,25 +108,27 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         _ messageData: Data,
         completionHandler: ((Data?) -> Void)? = nil
     ) {
-        completionHandler?(messageData)
-    }
-
-    private func readPackets() {
-        guard isRunning else { return }
-        packetFlow.readPackets { [weak self] _, _ in
-            self?.readPackets()
-        }
+        completionHandler?(nil)
     }
 }
 
-private final class ErrorCompletion: @unchecked Sendable {
+private final class CompletionGate: @unchecked Sendable {
+    private let lock = NSLock()
     private let handler: (Error?) -> Void
+    private var didFinish = false
 
     init(_ handler: @escaping (Error?) -> Void) {
         self.handler = handler
     }
 
-    func call(_ error: Error?) {
+    func finish(_ error: Error?) {
+        lock.lock()
+        guard !didFinish else {
+            lock.unlock()
+            return
+        }
+        didFinish = true
+        lock.unlock()
         handler(error)
     }
 }

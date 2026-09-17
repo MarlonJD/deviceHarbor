@@ -19,6 +19,9 @@
 		A1000001000000000000000A /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000010000000000000008 /* NetworkExtension.framework */; };
 		A1000001000000000000000B /* Network.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000010000000000000007 /* Network.framework */; };
 		A1000001000000000000000C /* DeviceHarborNetworkExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000B /* DeviceHarborNetworkExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A1000001000000000000000D /* DeviceHarborProtocol.swift in Network Extension Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* DeviceHarborProtocol.swift */; };
+		A1000001000000000000000E /* DeviceHarborChannel.swift in Network Extension Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005 /* DeviceHarborChannel.swift */; };
+		A1000001000000000000000F /* DeviceHarborCompanion.swift in Network Extension Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006 /* DeviceHarborCompanion.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -256,6 +259,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1000001000000000000000D /* DeviceHarborProtocol.swift in Network Extension Sources */,
+				A1000001000000000000000E /* DeviceHarborChannel.swift in Network Extension Sources */,
+				A1000001000000000000000F /* DeviceHarborCompanion.swift in Network Extension Sources */,
 				A10000010000000000000009 /* PacketTunnelProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

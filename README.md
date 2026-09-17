@@ -110,8 +110,9 @@ new Worker when the current temporary session expires. No Worker URL is stored
 in the app build and no per-connection app rebuild is required. A generic HTTP
 tunnel is not the CoreDevice data plane.
 
-The iOS Network Extension is deliberately kept separate from the companion
-control session. Apple’s [Packet Tunnel guidance](https://developer.apple.com/documentation/technotes/tn3120-expected-use-cases-for-network-extension-packet-tunnel-providers) says a packet tunnel is for routing packets through a tunnel server, not for hosting a general-purpose inbound listener or proxy. The production design must therefore keep the iPhone session outbound and use the extension only where the approved entitlement and transport require it.
+The iOS Network Extension owns the outbound relay session when private
+transport is started, while the app remains responsible for pairing and
+provisioning the offer. Apple’s [Packet Tunnel guidance](https://developer.apple.com/documentation/technotes/tn3120-expected-use-cases-for-network-extension-packet-tunnel-providers) says a packet tunnel is for routing packets through a tunnel server, not for hosting a general-purpose inbound listener or proxy. DeviceHarbor therefore keeps the iPhone session outbound and uses the extension for the approved service-level reverse transport.
 
 ## Security boundary
 
