@@ -54,10 +54,13 @@ public final class DeviceHarborCompanionServer: @unchecked Sendable, DeviceHarbo
     private var pendingSessions: [UUID: CompanionServerSession] = [:]
     private var relayOffer: DeviceHarborRelayOffer?
 
-    public init(displayName: String = "DeviceHarbor Mac") {
+    public init(
+        displayName: String = "DeviceHarbor Mac",
+        pairingCode: String? = nil
+    ) {
         self.peerID = "mac-\(UUID().uuidString)"
         self.displayName = displayName
-        self.pairingCode = DeviceHarborPairing.generateCode()
+        self.pairingCode = pairingCode ?? DeviceHarborPairing.generateCode()
         self.listener = DeviceHarborListener(serviceName: displayName)
         self.listener.onChannel = { [weak self] channel in
             self?.accept(channel)

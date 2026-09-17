@@ -33,7 +33,8 @@ final class AppModel: ObservableObject {
     ) {
         self.deviceClient = deviceClient
         self.profileStore = profileStore
-        let companionServer = DeviceHarborCompanionServer()
+        let storedRelayOffer = MacRelayOfferKeychain.load()
+        let companionServer = DeviceHarborCompanionServer(pairingCode: storedRelayOffer?.pairingCode)
         self.companionServer = companionServer
         self.companionPairingCode = companionServer.pairingCode
         companionServer.onStateChange = { [weak self] state in
@@ -248,6 +249,11 @@ final class AppModel: ObservableObject {
     }
 
     private func provisionEphemeralRelay() {
+        if let storedOffer = MacRelayOfferKeychain.load(), !storedOffer.isExpired {
+            activateRelayOffer(storedOffer, reused: true)
+            return
+        }
+
         let provisioner = DeviceHarborEphemeralRelayProvisioner()
         let pairingCode = companionPairingCode
         Task { @MainActor [weak self, provisioner] in
@@ -265,16 +271,23 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             switch result {
             case .success(let offer):
-                companionServer.setRelayOffer(offer)
-                do {
-                    try companionServer.connectToHostedRelay(offer: offer)
-                    statusMessage = "Temporary DeviceHarbor relay is ready. Pair code \(companionPairingCode) is available to the iPhone companion."
-                } catch {
-                    statusMessage = error.localizedDescription
-                }
+                MacRelayOfferKeychain.save(offer)
+                activateRelayOffer(offer, reused: false)
             case .failure(let failure):
                 statusMessage = "Temporary DeviceHarbor relay unavailable: \(failure.message)"
             }
+        }
+    }
+
+    private func activateRelayOffer(_ offer: DeviceHarborRelayOffer, reused: Bool) {
+        companionServer.setRelayOffer(offer)
+        do {
+            try companionServer.connectToHostedRelay(offer: offer)
+            statusMessage = reused
+                ? "Temporary DeviceHarbor relay restored from Keychain. Pair code \(companionPairingCode) is available to the iPhone companion."
+                : "Temporary DeviceHarbor relay is ready. Pair code \(companionPairingCode) is available to the iPhone companion."
+        } catch {
+            statusMessage = error.localizedDescription
         }
     }
 
