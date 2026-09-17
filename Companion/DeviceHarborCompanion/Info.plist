@@ -8,6 +8,8 @@
 	<string>dev.deviceharbor.companion</string>
 	<key>CFBundleName</key>
 	<string>DeviceHarbor</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -16,12 +18,12 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>DeviceHarbor uses the local network to discover and pair with your Mac companion.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_deviceharbor._tcp</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>DeviceHarbor uses the local network to discover and pair with your Mac companion.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
