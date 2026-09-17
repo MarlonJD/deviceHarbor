@@ -81,10 +81,13 @@ controls.
 - `ZeroTier` and `NetBird`: install on both devices and enter the assigned
   iPhone address manually.
 - `Manual IP`: no overlay app is required, but the address must already be
-  reachable from the Mac. Bluetooth PAN, a shared private LAN, and a USB
-  network interface are possible candidates. This does not make Bluetooth a
-  native Xcode transport; Bonjour is only re-advertised locally and the actual
-  CoreDevice traffic remains TCP/IP.
+  reachable from the Mac. For Bluetooth PAN, enable Personal Hotspot on the
+  iPhone, leave the iPhone Bluetooth settings visible, and select the iPhone
+  from the Mac’s Bluetooth settings. Do not pair the Mac as a generic device
+  from iPhone Bluetooth. A shared private LAN and a USB network interface are
+  other candidates. This does not make Bluetooth a native Xcode transport;
+  Bonjour is only re-advertised locally and the actual CoreDevice traffic
+  remains TCP/IP.
 
 The app is not affiliated with Apple. Xcode, iPhone, Apple Watch, and related
 marks belong to Apple Inc.

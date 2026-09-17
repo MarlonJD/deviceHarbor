@@ -38,7 +38,7 @@ public enum MeshProvider: String, Codable, CaseIterable, Sendable {
         case .netbird:
             "Requires NetBird on both devices; enter the iPhone's private address manually."
         case .manual:
-            "No overlay app is required. Enter any IP reachable from this Mac, including a same-LAN or Bluetooth-PAN address."
+            "No overlay app is required. For Bluetooth PAN, enable Personal Hotspot on iPhone, keep iPhone Settings > Bluetooth open, and select iPhone from Mac Bluetooth; do not pair the Mac as a generic device from iPhone."
         }
     }
 }
