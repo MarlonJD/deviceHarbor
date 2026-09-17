@@ -72,9 +72,20 @@ public enum BonjourZoneParser {
             let tokens = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
             guard let nameToken = tokens.first else { continue }
             let name = nameToken.hasSuffix(".") ? nameToken : nameToken + "."
-            guard name.lowercased().hasSuffix(suffix.lowercased()) else { continue }
+            let shortSuffix = ".\(serviceType)."
+            let lowerName = name.lowercased()
+            let lowerLongSuffix = suffix.lowercased()
+            let lowerShortSuffix = shortSuffix.lowercased()
+            let matchedSuffix: String
+            if lowerName.hasSuffix(lowerLongSuffix) {
+                matchedSuffix = suffix
+            } else if lowerName.hasSuffix(lowerShortSuffix) {
+                matchedSuffix = shortSuffix
+            } else {
+                continue
+            }
             let key = name.lowercased()
-            let instance = decodeZoneName(String(name.dropLast(suffix.count)))
+            let instance = decodeZoneName(String(name.dropLast(matchedSuffix.count)))
             var partial = partials[key] ?? PartialService(
                 instanceName: instance,
                 serviceType: serviceType,

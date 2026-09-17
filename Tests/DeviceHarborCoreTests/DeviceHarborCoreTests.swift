@@ -138,8 +138,8 @@ final class DeviceHarborCoreTests: XCTestCase {
     func testParsesBonjourZoneServiceAndEscapedInstanceName() {
         let zone = """
         ; dns-sd -Z output is a DNS-SD zone snapshot
-        Burak\\032iPhoneu._remotepairing._tcp.local. SRV 0 0 49152 Burak-iPhoneu.local.
-        Burak\\032iPhoneu._remotepairing._tcp.local. TXT "platform=iOS" "udid=PHONE-UDID" "paired"
+        Burak\\032iPhoneu._remotepairing._tcp SRV 0 0 49152 Burak-iPhoneu.local.
+        Burak\\032iPhoneu._remotepairing._tcp TXT "platform=iOS" "udid=PHONE-UDID" "paired"
         """
 
         let services = BonjourZoneParser.parse(
