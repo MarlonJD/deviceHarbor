@@ -27,9 +27,10 @@ final class CompanionModel {
     private var browser: NWBrowser?
     private let companionClient = DeviceHarborCompanionClient()
     private var tunnelManager: NETunnelProviderManager?
-    private var relayReconnectTask: Task<Void, Never>?
-    private var usingHostedRelay = false
-    private var relayReconnectAttempts = 0
+    private var tunnelStatusObserver: NSObjectProtocol?
+    private var isStartingNetworkExtension = false
+    private var networkExtensionReconnectTask: Task<Void, Never>?
+    private var networkExtensionReconnectAttempts = 0
 
     init() {
         if let storedOffer = RelayOfferKeychain.load() {
@@ -37,6 +38,7 @@ final class CompanionModel {
             pairingCode = storedOffer.pairingCode
         }
         configureCompanionClient()
+        loadNetworkExtension()
     }
 
     var canPair: Bool {
@@ -113,13 +115,11 @@ final class CompanionModel {
         }
         browser.start(queue: DispatchQueue.main)
         self.browser = browser
-        scheduleHostedRelayReconnect()
     }
 
     func select(_ mac: DiscoveredMac) {
-        relayReconnectTask?.cancel()
-        relayReconnectTask = nil
-        usingHostedRelay = false
+        networkExtensionReconnectTask?.cancel()
+        networkExtensionReconnectTask = nil
         selectedMacID = mac.id
         companionConnectionReady = false
         companionStatus = "Connecting to \(mac.name)…"
@@ -137,8 +137,7 @@ final class CompanionModel {
                 case .failed(let message):
                     self.companionConnectionReady = false
                     self.companionStatus = "Connection failed: \(message)"
-                    self.usingHostedRelay = false
-                    self.scheduleHostedRelayReconnect()
+                    self.scheduleNetworkExtensionReconnect()
                 case .connecting:
                     self.companionConnectionReady = false
                     self.companionStatus = "Connecting to Mac companion…"
@@ -147,8 +146,7 @@ final class CompanionModel {
                     self.companionStatus = "Connected to Mac companion. Enter the pairing code."
                 case .paired(_, let transport):
                     self.companionConnectionReady = true
-                    self.usingHostedRelay = transport == .relay
-                    self.relayReconnectAttempts = 0
+                    self.networkExtensionReconnectAttempts = 0
                     self.companionStatus = transport == .relay
                         ? "Paired with Mac companion through the DeviceHarbor network."
                         : "Paired with Mac companion."
@@ -159,10 +157,10 @@ final class CompanionModel {
             Task { @MainActor in
                 guard let self else { return }
                 self.companionConnectionReady = true
-                if self.usingHostedRelay && self.pairingCode.count == 6 {
+                if self.pairingCode.count == 6 {
                     self.companionClient.pair(using: self.pairingCode)
-                    self.status = "Pairing with Mac companion through the DeviceHarbor network…"
-                    self.companionStatus = "Mac companion found through the DeviceHarbor network. Pairing…"
+                    self.status = "Pairing with Mac companion…"
+                    self.companionStatus = "Mac companion found. Pairing…"
                 } else {
                     self.companionStatus = "Connected to \(name). Enter the pairing code."
                 }
@@ -175,7 +173,11 @@ final class CompanionModel {
                 self.pairingCode = offer.pairingCode
                 RelayOfferKeychain.save(offer)
                 self.status = "Relay session received from the Mac companion."
-                self.scheduleHostedRelayReconnect()
+                if self.networkExtensionPrepared {
+                    self.startNetworkExtension()
+                } else {
+                    self.prepareNetworkExtension(autoStart: true)
+                }
             }
         }
     }
@@ -186,44 +188,49 @@ final class CompanionModel {
     }
 
     func connectViaRelay() {
-        guard let relayOffer, !relayOffer.isExpired, let endpoint = relayOffer.webSocketURL else {
+        guard let relayOffer, !relayOffer.isExpired, relayOffer.webSocketURL != nil else {
             status = "Pair with the Mac companion once on the same network to receive a temporary relay session."
             return
         }
-        relayReconnectTask?.cancel()
-        relayReconnectTask = nil
-        usingHostedRelay = true
-        companionConnectionReady = false
-        companionStatus = "Connecting to the DeviceHarbor network…"
-        status = "Connecting to the DeviceHarbor network…"
-        self.companionClient.connect(
-            to: NWEndpoint.url(endpoint),
-            parameters: DeviceHarborChannel.webSocketParameters(),
-            transport: .webSocket,
-            rendezvousID: relayOffer.session.roomID,
-            accessToken: relayOffer.session.accessToken
-        )
-    }
-
-    private func scheduleHostedRelayReconnect() {
-        guard canConnectViaRelay,
-              !companionConnectionReady,
-              !usingHostedRelay,
-              relayReconnectTask == nil,
-              relayReconnectAttempts < 3 else {
-            return
-        }
-        relayReconnectAttempts += 1
-        relayReconnectTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard let self, !Task.isCancelled else { return }
-            self.relayReconnectTask = nil
-            guard !self.companionConnectionReady else { return }
-            self.connectViaRelay()
+        if networkExtensionPrepared {
+            startNetworkExtension()
+        } else {
+            prepareNetworkExtension(autoStart: true)
         }
     }
 
     func prepareNetworkExtension() {
+        prepareNetworkExtension(autoStart: false)
+    }
+
+    private func loadNetworkExtension() {
+        NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
+            let manager = managers?.first.map(TunnelProviderManagerBox.init)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let error {
+                    self.status = "Network Extension load failed: \(error.localizedDescription)"
+                    return
+                }
+                guard let manager else {
+                    if self.canConnectViaRelay {
+                        self.prepareNetworkExtension(autoStart: true)
+                    }
+                    return
+                }
+                self.tunnelManager = manager.value
+                self.networkExtensionPrepared = manager.value.isEnabled
+                if let session = manager.value.connection as? NETunnelProviderSession {
+                    self.observeTunnelStatus(session)
+                }
+                if self.canConnectViaRelay {
+                    self.startNetworkExtension()
+                }
+            }
+        }
+    }
+
+    private func prepareNetworkExtension(autoStart: Bool) {
         status = "Preparing Network Extension…"
         NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
             if let error {
@@ -253,6 +260,12 @@ final class CompanionModel {
                             self.tunnelManager = manager.value
                             self.networkExtensionPrepared = true
                             self.status = "Network Extension prepared; start it and approve the VPN prompt."
+                            if let session = manager.value.connection as? NETunnelProviderSession {
+                                self.observeTunnelStatus(session)
+                            }
+                            if autoStart {
+                                self.startNetworkExtension()
+                            }
                         }
                     }
                 }
@@ -277,6 +290,15 @@ final class CompanionModel {
             status = "Network Extension session is unavailable."
             return
         }
+        observeTunnelStatus(session)
+        if session.status == .connected || session.status == .connecting || session.status == .reasserting {
+            updateTunnelStatus(session.status)
+            return
+        }
+        guard !isStartingNetworkExtension else { return }
+        networkExtensionReconnectTask?.cancel()
+        networkExtensionReconnectTask = nil
+        isStartingNetworkExtension = true
         let configuration = NETunnelProviderProtocol()
         configuration.providerBundleIdentifier = "dev.deviceharbor.companion.network-extension"
         configuration.serverAddress = "DeviceHarbor"
@@ -285,6 +307,7 @@ final class CompanionModel {
             "relayOffer": relayData
         ]
         manager.protocolConfiguration = configuration
+        manager.isEnabled = true
         manager.saveToPreferences { [weak self] error in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -297,9 +320,75 @@ final class CompanionModel {
                     try session.startVPNTunnel()
                     self.status = "Private transport starting; approve the VPN prompt if shown."
                 } catch {
+                    self.isStartingNetworkExtension = false
                     self.status = "Network Extension start failed: \(error.localizedDescription)"
                 }
             }
+        }
+    }
+
+    private func observeTunnelStatus(_ session: NETunnelProviderSession) {
+        if let tunnelStatusObserver {
+            NotificationCenter.default.removeObserver(tunnelStatusObserver)
+        }
+        tunnelStatusObserver = NotificationCenter.default.addObserver(
+            forName: .NEVPNStatusDidChange,
+            object: session,
+            queue: .main
+        ) { [weak self, weak session] _ in
+            guard let session else { return }
+            let status = session.status
+            Task { @MainActor [weak self] in
+                self?.updateTunnelStatus(status)
+            }
+        }
+        updateTunnelStatus(session.status)
+    }
+
+    private func updateTunnelStatus(_ status: NEVPNStatus) {
+        switch status {
+        case .connected:
+            isStartingNetworkExtension = false
+            networkExtensionReconnectAttempts = 0
+            networkExtensionReconnectTask?.cancel()
+            networkExtensionReconnectTask = nil
+            self.status = "Private transport connected through the DeviceHarbor relay."
+        case .connecting:
+            self.status = "Connecting the Network Extension to the DeviceHarbor relay…"
+        case .reasserting:
+            self.status = "Reconnecting the Network Extension to the DeviceHarbor relay…"
+        case .disconnecting:
+            self.status = "Stopping private transport…"
+        case .disconnected:
+            let wasStarting = isStartingNetworkExtension
+            if wasStarting {
+                self.status = "Private transport disconnected before the relay session became ready."
+            }
+            isStartingNetworkExtension = false
+            if wasStarting || networkExtensionReconnectAttempts > 0 {
+                scheduleNetworkExtensionReconnect()
+            }
+        case .invalid:
+            isStartingNetworkExtension = false
+            self.status = "The DeviceHarbor Network Extension is invalid. Prepare it again."
+        @unknown default:
+            break
+        }
+    }
+
+    private func scheduleNetworkExtensionReconnect() {
+        guard canConnectViaRelay,
+              !isStartingNetworkExtension,
+              networkExtensionReconnectTask == nil,
+              networkExtensionReconnectAttempts < 3 else {
+            return
+        }
+        networkExtensionReconnectAttempts += 1
+        networkExtensionReconnectTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.networkExtensionReconnectTask = nil
+            self.startNetworkExtension()
         }
     }
 

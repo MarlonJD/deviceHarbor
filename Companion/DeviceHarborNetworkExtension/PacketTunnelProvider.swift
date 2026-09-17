@@ -22,6 +22,7 @@ private enum PacketTunnelError: LocalizedError, Sendable {
 final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     private var isRunning = false
     private var companionClient: DeviceHarborCompanionClient?
+    private var startupTimeout: DispatchWorkItem?
 
     override func startTunnel(
         options: [String: NSObject]?,
@@ -70,9 +71,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
                 switch state {
                 case .paired:
                     self.isRunning = true
+                    self.startupTimeout?.cancel()
+                    self.startupTimeout = nil
                     completion.finish(nil)
                 case .failed(let message):
                     self.isRunning = false
+                    self.startupTimeout?.cancel()
+                    self.startupTimeout = nil
                     self.companionClient?.disconnect()
                     completion.finish(PacketTunnelError.relayFailed(message))
                 case .stopped:
@@ -84,6 +89,15 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
                 }
             }
             self.companionClient = client
+            let timeout = DispatchWorkItem { [weak self, completion] in
+                guard let self else { return }
+                self.isRunning = false
+                self.companionClient?.disconnect()
+                self.companionClient = nil
+                completion.finish(PacketTunnelError.relayFailed("Timed out waiting for the Mac relay peer."))
+            }
+            self.startupTimeout = timeout
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timeout)
             client.connect(
                 to: NWEndpoint.url(endpoint),
                 parameters: DeviceHarborChannel.webSocketParameters(),
@@ -99,6 +113,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         completionHandler: @escaping () -> Void
     ) {
         isRunning = false
+        startupTimeout?.cancel()
+        startupTimeout = nil
         companionClient?.disconnect()
         companionClient = nil
         completionHandler()

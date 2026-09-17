@@ -26,6 +26,9 @@ final class AppModel: ObservableObject {
     private let profileStore: any ProfileStoring
     private let companionServer: DeviceHarborCompanionServer
     private var bridge: BonjourBridge?
+    private var relayOffer: DeviceHarborRelayOffer?
+    private var relayReconnectTask: Task<Void, Never>?
+    private var relayReconnectAttempts = 0
 
     init(
         deviceClient: DeviceCtlClient = DeviceCtlClient(),
@@ -36,11 +39,24 @@ final class AppModel: ObservableObject {
         let storedRelayOffer = MacRelayOfferKeychain.load()
         let companionServer = DeviceHarborCompanionServer(pairingCode: storedRelayOffer?.pairingCode)
         self.companionServer = companionServer
+        self.relayOffer = storedRelayOffer
         self.companionPairingCode = companionServer.pairingCode
         companionServer.onStateChange = { [weak self] state in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.companionState = state
+                switch state {
+                case .paired(_, let transport):
+                    if transport == .relay {
+                        self.relayReconnectAttempts = 0
+                        self.relayReconnectTask?.cancel()
+                        self.relayReconnectTask = nil
+                    }
+                case .failed:
+                    self.scheduleHostedRelayReconnect()
+                case .stopped, .connecting, .waitingForPair:
+                    break
+                }
             }
         }
         do {
@@ -61,6 +77,7 @@ final class AppModel: ObservableObject {
     }
 
     deinit {
+        relayReconnectTask?.cancel()
         companionServer.stop()
     }
 
@@ -280,6 +297,7 @@ final class AppModel: ObservableObject {
     }
 
     private func activateRelayOffer(_ offer: DeviceHarborRelayOffer, reused: Bool) {
+        relayOffer = offer
         companionServer.setRelayOffer(offer)
         do {
             try companionServer.connectToHostedRelay(offer: offer)
@@ -288,6 +306,26 @@ final class AppModel: ObservableObject {
                 : "Temporary DeviceHarbor relay is ready. Pair code \(companionPairingCode) is available to the iPhone companion."
         } catch {
             statusMessage = error.localizedDescription
+        }
+    }
+
+    private func scheduleHostedRelayReconnect() {
+        guard let offer = relayOffer,
+              !offer.isExpired,
+              relayReconnectTask == nil,
+              relayReconnectAttempts < 3 else {
+            return
+        }
+        relayReconnectAttempts += 1
+        relayReconnectTask = Task { @MainActor [weak self, offer] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.relayReconnectTask = nil
+            do {
+                try self.companionServer.connectToHostedRelay(offer: offer)
+            } catch {
+                self.statusMessage = "Temporary DeviceHarbor relay reconnect failed: \(error.localizedDescription)"
+            }
         }
     }
 
