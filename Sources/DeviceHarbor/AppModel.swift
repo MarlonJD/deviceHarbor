@@ -71,9 +71,9 @@ final class AppModel: ObservableObject {
             isRefreshing = false
             switch result {
             case .success(let devices):
-                self.devices = devices
-                self.statusMessage = devices.first(where: { $0.connectivityAdvice != nil })?.connectivityAdvice
-                    ?? (devices.isEmpty ? "No devices reported by CoreDevice." : "Found \(devices.count) device(s).")
+                self.devices = devices.filter(\.isPhysical)
+                self.statusMessage = self.devices.first(where: { $0.connectivityAdvice != nil })?.connectivityAdvice
+                    ?? (self.devices.isEmpty ? "No physical devices reported by CoreDevice." : "Found \(self.devices.count) physical device(s).")
             case .failure(let message):
                 self.statusMessage = message.message
             }
@@ -279,7 +279,7 @@ final class AppModel: ObservableObject {
 
     func captureLocalBonjourServices(
         matching identities: [String] = [],
-        duration: TimeInterval = 5,
+        duration: TimeInterval = 12,
         completion: @escaping @MainActor (BonjourCaptureOutcome) -> Void
     ) {
         statusMessage = "Capturing local Xcode Bonjour records…"

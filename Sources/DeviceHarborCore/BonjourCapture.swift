@@ -232,6 +232,23 @@ private final class BoundedCaptureProcess: @unchecked Sendable {
     }
 }
 
+private final class CaptureTimeoutState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue = false
+
+    var didTimeout: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    func markTimedOut() {
+        lock.lock()
+        storedValue = true
+        lock.unlock()
+    }
+}
+
 public struct BonjourCapture {
     public let executablePath: String
 
@@ -243,7 +260,7 @@ public struct BonjourCapture {
         serviceType: String,
         domain: String = "local.",
         matching: [String] = [],
-        duration: TimeInterval = 5
+        duration: TimeInterval = 12
     ) throws -> [CapturedBonjourService] {
         let process = Process()
         let pipe = Pipe()
@@ -259,7 +276,9 @@ public struct BonjourCapture {
         }
 
         let controller = BoundedCaptureProcess(process: process)
+        let timeoutState = CaptureTimeoutState()
         let terminator = DispatchWorkItem {
+            timeoutState.markTimedOut()
             controller.terminateIfRunning()
         }
         DispatchQueue.global(qos: .utility).asyncAfter(
@@ -273,6 +292,7 @@ public struct BonjourCapture {
 
         let output = String(decoding: data, as: UTF8.self)
         guard process.terminationStatus == 0 || !output.isEmpty else {
+            if timeoutState.didTimeout { return [] }
             throw BonjourCaptureError.commandFailed(output.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         let services = BonjourZoneParser.parse(output, serviceType: serviceType, domain: domain)

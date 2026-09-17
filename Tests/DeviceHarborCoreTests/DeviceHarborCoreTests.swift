@@ -94,6 +94,18 @@ final class DeviceHarborCoreTests: XCTestCase {
         XCTAssertEqual(try DeviceCtlJSONParser.parse(data), [])
     }
 
+    func testIdentifiesSimulatedCoreDeviceAsNonPhysical() throws {
+        let data = Data(
+            #"{"result":{"devices":[{"identifier":"SIM-1","hardwareProperties":{"platform":"iOS","reality":"simulated"},"deviceProperties":{"name":"iPhone 18 Pro"},"connectionProperties":{"transportType":"sameMachine","state":"disconnected"}}]}}"#.utf8
+        )
+
+        let devices = try DeviceCtlJSONParser.parse(data)
+
+        XCTAssertEqual(devices.count, 1)
+        XCTAssertFalse(devices[0].isPhysical)
+        XCTAssertEqual(devices[0].transportType, "sameMachine")
+    }
+
     func testBuildsVersionedDeviceCtlCommandsWithoutShellInterpolation() {
         let list = DeviceCtlClient.listDevicesCommand(outputPath: "/tmp/devices.json", timeoutSeconds: 8)
         XCTAssertEqual(list.executable, "/usr/bin/xcrun")
