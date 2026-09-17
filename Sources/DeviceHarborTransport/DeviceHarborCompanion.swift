@@ -183,13 +183,17 @@ public final class DeviceHarborCompanionServer: @unchecked Sendable, DeviceHarbo
                 self.lock.unlock()
                 self.onStateChange?(.paired(peerID: peerID, transport: session.transport))
             },
-            onClosed: { [weak self] session in
+            onClosed: { [weak self] session, failureMessage in
                 guard let self else { return }
                 self.lock.lock()
                 self.pendingSessions = self.pendingSessions.filter { $0.value !== session }
                 if self.session === session { self.session = nil }
                 self.lock.unlock()
-                self.onStateChange?(.waitingForPair)
+                if let failureMessage {
+                    self.onStateChange?(.failed(failureMessage))
+                } else {
+                    self.onStateChange?(.waitingForPair)
+                }
             }
         )
         lock.lock()
@@ -208,7 +212,7 @@ private final class CompanionServerSession: @unchecked Sendable {
     private let accessToken: String?
     let transport: DeviceHarborCompanionTransport
     private let onPaired: @Sendable (String, CompanionServerSession) -> Void
-    private let onClosed: @Sendable (CompanionServerSession) -> Void
+    private let onClosed: @Sendable (CompanionServerSession, String?) -> Void
     private let lock = NSLock()
     private var pairedPeerID: String?
     private var streams: [String: CompanionServerStream] = [:]
@@ -229,7 +233,7 @@ private final class CompanionServerSession: @unchecked Sendable {
         transport: DeviceHarborCompanionTransport,
         relayOffer: DeviceHarborRelayOffer?,
         onPaired: @escaping @Sendable (String, CompanionServerSession) -> Void,
-        onClosed: @escaping @Sendable (CompanionServerSession) -> Void
+        onClosed: @escaping @Sendable (CompanionServerSession, String?) -> Void
     ) {
         self.channel = channel
         self.peerID = peerID
@@ -247,8 +251,8 @@ private final class CompanionServerSession: @unchecked Sendable {
         channel.onFrame = { [weak self] frame in self?.handle(frame) }
         channel.onStateChange = { [weak self] state in
             guard let self else { return }
-            if case .cancelled = state { self.onClosed(self) }
-            if case .failed = state { self.onClosed(self) }
+            if case .cancelled = state { self.onClosed(self, nil) }
+            if case .failed(let message) = state { self.onClosed(self, message) }
             if case .ready = state { self.startHandshake() }
         }
         startHeartbeat()
