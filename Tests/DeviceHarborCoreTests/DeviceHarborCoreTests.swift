@@ -109,6 +109,12 @@ final class DeviceHarborCoreTests: XCTestCase {
         )
         XCTAssertEqual(install.arguments.suffix(5), ["install", "app", "--device", "PHONE-UDID", "/tmp/My App.app"])
         XCTAssertFalse(install.displayCommand.contains("My App.app;"))
+
+        let pairing = DeviceCtlClient.createWatchPairingCommand(
+            phoneIdentifier: "PHONE-CORE-ID",
+            watchIdentifier: "WATCH-CORE-ID"
+        )
+        XCTAssertEqual(pairing.arguments.suffix(5), ["pair", "--phone", "PHONE-CORE-ID", "--watch", "WATCH-CORE-ID"])
     }
 
     func testBuildsBonjourProxyCommandWithStableTxtOrder() {
@@ -148,6 +154,20 @@ final class DeviceHarborCoreTests: XCTestCase {
         XCTAssertEqual(services[0].remotePort, 49152)
         XCTAssertEqual(services[0].textRecords["platform"], "iOS")
         XCTAssertEqual(services[0].textRecords["paired"], "")
+    }
+
+    func testParsesWatchPairingJSON() throws {
+        let data = Data(
+            #"{"result":{"pairings":[{"identifier":"PAIR-1","phone":{"identifier":"PHONE-1","name":"iPhone 17"},"watch":{"identifier":"WATCH-1","name":"Apple Watch"},"active":true}]}}"#.utf8
+        )
+
+        let pairings = try DevicePairingJSONParser.parse(data)
+
+        XCTAssertEqual(pairings.count, 1)
+        XCTAssertEqual(pairings[0].phoneIdentifier, "PHONE-1")
+        XCTAssertEqual(pairings[0].watchIdentifier, "WATCH-1")
+        XCTAssertEqual(pairings[0].watchName, "Apple Watch")
+        XCTAssertEqual(pairings[0].active, true)
     }
 
     func testProfileRoundTripDoesNotAddCredentials() throws {

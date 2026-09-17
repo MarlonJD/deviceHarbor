@@ -21,6 +21,7 @@ The current increment provides:
 - bounded `dns-sd -Z` capture and a parser for Xcode 27 service families;
 - a TCP relay and `/usr/bin/dns-sd -P` Bonjour proxy publisher;
 - initial iPhone and Apple Watch service-model support;
+- Xcode 27 phone/Watch pairing command and JSON adapters;
 - deterministic parser, command, profile, and Bonjour command tests.
 
 The physical Xcode bridge is not yet certified. A real iPhone 17 and paired
@@ -28,6 +29,11 @@ Apple Watch on iOS 27/watchOS 27 are required to verify the device graph,
 RemotePairing records, dynamic CoreDevice ports, native Xcode Run Destinations,
 breakpoints, LLDB, and Watch installation/debugging. Until that pass exists,
 the relay is candidate-only.
+
+An Apple Watch charging puck provides power; it is not treated as a direct USB
+developer transport. DeviceHarbor expects the Watch to be paired with its
+iPhone and visible through Xcode 27’s CoreDevice graph, with Bluetooth/Wi-Fi
+available for the Apple developer connection.
 
 ## Build
 

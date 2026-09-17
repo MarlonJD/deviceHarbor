@@ -16,6 +16,8 @@ final class AppModel: ObservableObject {
     @Published var statusMessage = "Ready"
     @Published var lastCommand = ""
     @Published var isRefreshing = false
+    @Published var watchPairings: [DevicePairing] = []
+    @Published var isLoadingWatchPairings = false
 
     private let deviceClient: DeviceCtlClient
     private let profileStore: any ProfileStoring
@@ -132,6 +134,37 @@ final class AppModel: ObservableObject {
             refreshDevices()
         } else {
             pair(device: device)
+        }
+    }
+
+    func refreshWatchPairings(for phone: CoreDevice) {
+        guard phone.platformKind == .iOS else { return }
+        guard !isLoadingWatchPairings else { return }
+        isLoadingWatchPairings = true
+        statusMessage = "Reading Watch pairings…"
+        let client = deviceClient
+        let identifier = phone.identifier
+        Task { [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                do {
+                    return Result<[DevicePairing], BackgroundFailure>.success(
+                        try client.listPairings(for: identifier)
+                    )
+                } catch {
+                    return Result<[DevicePairing], BackgroundFailure>.failure(
+                        BackgroundFailure(message: error.localizedDescription)
+                    )
+                }
+            }.value
+            guard let self else { return }
+            isLoadingWatchPairings = false
+            switch result {
+            case .success(let pairings):
+                watchPairings = pairings
+                statusMessage = pairings.isEmpty ? "No Watch pairing records reported." : "Found \(pairings.count) Watch pairing(s)."
+            case .failure(let error):
+                statusMessage = error.message
+            }
         }
     }
 

@@ -77,6 +77,29 @@ public struct DeviceCtlClient: @unchecked Sendable {
         }
     }
 
+    public func listPairings(for phoneIdentifier: String, timeoutSeconds: Int = 8) throws -> [DevicePairing] {
+        let outputURL = fileManager.temporaryDirectory
+            .appendingPathComponent("deviceharbor-pairings-\(UUID().uuidString).json")
+        defer { try? fileManager.removeItem(at: outputURL) }
+
+        let command = Self.listPairingsCommand(
+            phoneIdentifier: phoneIdentifier,
+            outputPath: outputURL.path,
+            timeoutSeconds: timeoutSeconds
+        )
+        let result = try runner.run(command)
+        guard result.succeeded else {
+            throw DeviceCtlError.commandFailed(result.output.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        do {
+            return try DevicePairingJSONParser.parse(Data(contentsOf: outputURL))
+        } catch let error as DeviceCtlError {
+            throw error
+        } catch {
+            throw DeviceCtlError.invalidJSON(error.localizedDescription)
+        }
+    }
+
     public static func listDevicesCommand(outputPath: String, timeoutSeconds: Int = 8) -> CommandSpec {
         CommandSpec(
             executable: xcrunPath,
@@ -133,6 +156,57 @@ public struct DeviceCtlClient: @unchecked Sendable {
                 "--device", deviceIdentifier,
                 "--terminate-existing",
                 bundleIdentifier
+            ]
+        )
+    }
+
+    public static func listPairingsCommand(
+        phoneIdentifier: String,
+        outputPath: String,
+        timeoutSeconds: Int = 8
+    ) -> CommandSpec {
+        CommandSpec(
+            executable: xcrunPath,
+            arguments: [
+                "devicectl",
+                "--timeout", String(timeoutSeconds),
+                "device", "pairings", "list",
+                "--device", phoneIdentifier,
+                "--json-output", outputPath
+            ]
+        )
+    }
+
+    public static func createWatchPairingCommand(
+        phoneIdentifier: String,
+        watchIdentifier: String,
+        timeoutSeconds: Int = 30
+    ) -> CommandSpec {
+        CommandSpec(
+            executable: xcrunPath,
+            arguments: [
+                "devicectl",
+                "--timeout", String(timeoutSeconds),
+                "device", "pairings", "pair",
+                "--phone", phoneIdentifier,
+                "--watch", watchIdentifier
+            ]
+        )
+    }
+
+    public static func setActiveWatchPairingCommand(
+        phoneIdentifier: String,
+        watchIdentifier: String,
+        timeoutSeconds: Int = 30
+    ) -> CommandSpec {
+        CommandSpec(
+            executable: xcrunPath,
+            arguments: [
+                "devicectl",
+                "--timeout", String(timeoutSeconds),
+                "device", "pairings", "set-active",
+                "--phone", phoneIdentifier,
+                "--watch", watchIdentifier
             ]
         )
     }
@@ -320,5 +394,75 @@ public enum DeviceCtlJSONParser {
             current = next
         }
         return true
+    }
+}
+
+public enum DevicePairingJSONParser {
+    public static func parse(_ data: Data) throws -> [DevicePairing] {
+        let object: Any
+        do {
+            object = try JSONSerialization.jsonObject(with: data)
+        } catch {
+            throw DeviceCtlError.invalidJSON(error.localizedDescription)
+        }
+        guard let root = object as? [String: Any],
+              let result = root["result"] as? [String: Any] else {
+            throw DeviceCtlError.invalidJSON("missing result")
+        }
+        guard let rawPairings = result["pairings"] as? [[String: Any]] else { return [] }
+
+        return rawPairings.compactMap { raw in
+            let phone = firstString(raw, paths: [
+                ["phoneIdentifier"], ["phone", "identifier"], ["phone", "udid"], ["phoneID"]
+            ])
+            let watch = firstString(raw, paths: [
+                ["watchIdentifier"], ["watch", "identifier"], ["watch", "udid"], ["watchID"]
+            ])
+            guard let phone, let watch, !phone.isEmpty, !watch.isEmpty else { return nil }
+            let id = firstString(raw, paths: [["identifier"], ["id"]])
+            let active = firstBool(raw, paths: [["active"], ["isActive"]])
+            let phoneName = firstString(raw, paths: [["phone", "name"], ["phoneName"]]) ?? ""
+            let watchName = firstString(raw, paths: [["watch", "name"], ["watchName"]]) ?? ""
+            return DevicePairing(
+                id: id,
+                phoneIdentifier: phone,
+                watchIdentifier: watch,
+                active: active,
+                phoneName: phoneName,
+                watchName: watchName
+            )
+        }
+    }
+
+    private static func firstString(_ dictionary: [String: Any], paths: [[String]]) -> String? {
+        for path in paths {
+            var current: Any = dictionary
+            var found = true
+            for key in path {
+                guard let object = current as? [String: Any], let next = object[key] else {
+                    found = false
+                    break
+                }
+                current = next
+            }
+            if found, let value = current as? String { return value }
+        }
+        return nil
+    }
+
+    private static func firstBool(_ dictionary: [String: Any], paths: [[String]]) -> Bool? {
+        for path in paths {
+            var current: Any = dictionary
+            var found = true
+            for key in path {
+                guard let object = current as? [String: Any], let next = object[key] else {
+                    found = false
+                    break
+                }
+                current = next
+            }
+            if found, let value = current as? Bool { return value }
+        }
+        return nil
     }
 }

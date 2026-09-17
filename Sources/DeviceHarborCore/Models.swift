@@ -120,6 +120,31 @@ public struct CoreDevice: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+public struct DevicePairing: Codable, Hashable, Identifiable, Sendable {
+    public let id: String
+    public let phoneIdentifier: String
+    public let watchIdentifier: String
+    public let active: Bool?
+    public let phoneName: String
+    public let watchName: String
+
+    public init(
+        id: String? = nil,
+        phoneIdentifier: String,
+        watchIdentifier: String,
+        active: Bool? = nil,
+        phoneName: String = "",
+        watchName: String = ""
+    ) {
+        self.phoneIdentifier = phoneIdentifier
+        self.watchIdentifier = watchIdentifier
+        self.active = active
+        self.phoneName = phoneName
+        self.watchName = watchName
+        self.id = id ?? "\(phoneIdentifier)::\(watchIdentifier)"
+    }
+}
+
 public struct RelayService: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var instanceName: String

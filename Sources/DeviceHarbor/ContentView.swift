@@ -169,6 +169,10 @@ struct DeviceDetailView: View {
                     )
                 }
 
+                if device.platformKind == .iOS {
+                    WatchPairingView(device: device)
+                }
+
                 StatusPanel()
             }
             .padding(28)
@@ -185,6 +189,45 @@ struct DeviceDetailView: View {
                 if didStart { url.stopAccessingSecurityScopedResource() }
             }
             model.installApp(at: url, for: profile)
+        }
+    }
+}
+
+private struct WatchPairingView: View {
+    @EnvironmentObject private var model: AppModel
+    let device: CoreDevice
+
+    var body: some View {
+        GroupBox("watchOS 27 pairing") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("The Watch is reached through its paired iPhone and the Xcode 27 CoreDevice graph. A charging puck alone is not a USB data transport.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Button(model.isLoadingWatchPairings ? "Reading…" : "Inspect Watch pairings") {
+                    model.refreshWatchPairings(for: device)
+                }
+                .disabled(model.isLoadingWatchPairings)
+
+                if model.watchPairings.isEmpty {
+                    Text("No pairing record loaded yet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.watchPairings) { pairing in
+                        HStack {
+                            Image(systemName: "applewatch")
+                            VStack(alignment: .leading) {
+                                Text(pairing.watchName.isEmpty ? pairing.watchIdentifier : pairing.watchName)
+                                Text(pairing.active == true ? "Active pairing" : "Pairing record")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+            }
         }
     }
 }
