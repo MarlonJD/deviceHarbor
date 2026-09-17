@@ -354,6 +354,11 @@ struct ProfileDetailView: View {
                     }
                     .disabled(commonRemoteAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
+                if let hint = privateAddressTestHint {
+                    Label(hint, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Text("Remote mesh address belongs to the iPhone/Watch side. The local advertised address belongs to this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -441,7 +446,7 @@ struct ProfileDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    if model.bridgeState != .stopped {
+                    if case .active = model.bridgeState {
                         Button("Stop") {
                             model.stopBridge()
                         }
@@ -481,6 +486,13 @@ struct ProfileDetailView: View {
             return "Add at least one Bonjour service before starting the bridge."
         }
         return "Complete each Bonjour service with an instance name, service type, address, and port."
+    }
+
+    private var privateAddressTestHint: String? {
+        let device = model.devices.first(where: { $0.identifier == draft.deviceIdentifier })
+            ?? model.devices.first(where: { $0.isPhysical && $0.platformKind == draft.platform })
+        guard device?.transportType.lowercased().contains("wired") == true else { return nil }
+        return "The iPhone is connected over USB. This button tests the private-network address, not the USB path."
     }
 
     private func applyCommonRemoteAddress() {

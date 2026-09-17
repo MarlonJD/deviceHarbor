@@ -190,6 +190,19 @@ final class AppModel: ObservableObject {
         let newBridge = BonjourBridge()
         Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) {
+                let reachability = TCPReachabilityTester()
+                for service in profile.services {
+                    switch reachability.test(address: service.remoteAddress, port: service.remotePort) {
+                    case .reachable:
+                        continue
+                    case .failed(let message):
+                        return Result<BridgeStartResult, BackgroundFailure>.failure(
+                            BackgroundFailure(
+                                message: "Cannot start the relay for \(service.serviceType): \(message)"
+                            )
+                        )
+                    }
+                }
                 do {
                     return Result<BridgeStartResult, BackgroundFailure>.success(try newBridge.start(profile: profile))
                 } catch {
@@ -209,6 +222,7 @@ final class AppModel: ObservableObject {
                 statusMessage = "Relay active on \(started.serviceCount) Bonjour service(s)."
             case .failure(let message):
                 newBridge.stop()
+                bridge = nil
                 bridgeState = .failed(message.message)
                 statusMessage = message.message
             }
