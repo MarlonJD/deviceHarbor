@@ -21,14 +21,17 @@ final class AppModel: ObservableObject {
 
     private let deviceClient: DeviceCtlClient
     private let profileStore: any ProfileStoring
+    private let meshResolver: MeshEndpointResolver
     private var bridge: BonjourBridge?
 
     init(
         deviceClient: DeviceCtlClient = DeviceCtlClient(),
-        profileStore: any ProfileStoring = FileProfileStore()
+        profileStore: any ProfileStoring = FileProfileStore(),
+        meshResolver: MeshEndpointResolver = MeshEndpointResolver()
     ) {
         self.deviceClient = deviceClient
         self.profileStore = profileStore
+        self.meshResolver = meshResolver
         do {
             profiles = try profileStore.load()
         } catch {
@@ -217,6 +220,30 @@ final class AppModel: ObservableObject {
         bridge = nil
         bridgeState = .stopped
         statusMessage = "Relay stopped."
+    }
+
+    func resolveMeshAddress(
+        for provider: MeshProvider,
+        matching query: String,
+        completion: @escaping @MainActor (MeshResolutionOutcome) -> Void
+    ) {
+        statusMessage = "Resolving \(provider.displayName) peer address…"
+        let resolver = meshResolver
+        Task { [weak self] in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                do {
+                    return MeshResolutionOutcome.success(try resolver.resolve(provider: provider, matching: query))
+                } catch {
+                    return MeshResolutionOutcome.failure(error.localizedDescription)
+                }
+            }.value
+            guard let self else { return }
+            switch outcome {
+            case .success(let address): statusMessage = "Resolved private address \(address)."
+            case .failure(let message): statusMessage = message
+            }
+            completion(outcome)
+        }
     }
 
     func captureLocalBonjourServices(

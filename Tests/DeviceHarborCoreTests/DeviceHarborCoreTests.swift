@@ -170,6 +170,15 @@ final class DeviceHarborCoreTests: XCTestCase {
         XCTAssertEqual(pairings[0].active, true)
     }
 
+    func testParsesTailscaleStatusPeers() throws {
+        let output = #"{"Self":{"HostName":"mac","DNSName":"mac.tailnet.ts.net.","TailscaleIPs":["100.64.0.2"],"Online":true},"Peer":{"key":{"HostName":"Burak-iPhoneu","DNSName":"burak-iphoneu.tailnet.ts.net.","TailscaleIPs":["100.64.0.10"],"Online":true}}}"#
+        let peers = try TailscaleStatusParser.parse(output)
+
+        XCTAssertEqual(peers.count, 2)
+        XCTAssertEqual(peers[1].addresses, ["100.64.0.10"])
+        XCTAssertTrue(peers[1].online)
+    }
+
     func testProfileRoundTripDoesNotAddCredentials() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("deviceharbor-tests-\(UUID().uuidString)", isDirectory: true)

@@ -327,8 +327,22 @@ struct ProfileDetailView: View {
                     .help("The Mac address advertised to Xcode; 127.0.0.1 is useful for local tests.")
                 TextField("iPhone/Watch private mesh address", text: $commonRemoteAddress)
                     .help("Use the iPhone's Tailscale, ZeroTier, NetBird, or Bluetooth-PAN address.")
-                Button("Apply address to all services", systemImage: "arrow.down.right.and.arrow.up.left") {
-                    applyCommonRemoteAddress()
+                HStack {
+                    Button("Apply address to all services", systemImage: "arrow.down.right.and.arrow.up.left") {
+                        applyCommonRemoteAddress()
+                    }
+                    if draft.meshProvider == .tailscale {
+                        Button("Resolve Tailscale address", systemImage: "point.3.connected.trianglepath.dotted") {
+                            let query = model.devices.first(where: { $0.identifier == draft.deviceIdentifier })?.name
+                                ?? draft.displayName
+                            model.resolveMeshAddress(for: draft.meshProvider, matching: query) { outcome in
+                                if case .success(let address) = outcome {
+                                    commonRemoteAddress = address
+                                    applyCommonRemoteAddress()
+                                }
+                            }
+                        }
+                    }
                 }
                 Text("Remote mesh address belongs to the iPhone/Watch side. The local advertised address belongs to this Mac.")
                     .font(.caption)
