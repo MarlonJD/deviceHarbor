@@ -346,6 +346,13 @@ struct ProfileDetailView: View {
                             }
                         }
                     }
+                    Button("Test private address", systemImage: "checkmark.circle") {
+                        model.testRemoteAddress(
+                            address: commonRemoteAddress,
+                            port: draft.services.first?.remotePort ?? 0
+                        )
+                    }
+                    .disabled(commonRemoteAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 Text("Remote mesh address belongs to the iPhone/Watch side. The local advertised address belongs to this Mac.")
                     .font(.caption)

@@ -19,6 +19,7 @@ The current increment provides:
 - a profile store that contains endpoints and Bonjour records, never pairing
   secrets;
 - optional Tailscale peer resolution with a manual-IP fallback;
+- a TCP reachability probe before starting a relay;
 - bounded `dns-sd -Z` capture and a parser for Xcode 27 service families;
 - a TCP relay and `/usr/bin/dns-sd -P` Bonjour proxy publisher;
 - initial iPhone and Apple Watch service-model support;

@@ -179,6 +179,22 @@ final class DeviceHarborCoreTests: XCTestCase {
         XCTAssertTrue(peers[1].online)
     }
 
+    func testReachabilityRejectsMissingAddressAndPortWithoutOpeningAConnection() {
+        let tester = TCPReachabilityTester()
+
+        if case .failed(let message) = tester.test(address: "", port: 49152) {
+            XCTAssertTrue(message.contains("address"))
+        } else {
+            XCTFail("Expected empty address to be rejected")
+        }
+
+        if case .failed(let message) = tester.test(address: "127.0.0.1", port: 0) {
+            XCTAssertTrue(message.contains("port"))
+        } else {
+            XCTFail("Expected zero port to be rejected")
+        }
+    }
+
     func testProfileRoundTripDoesNotAddCredentials() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("deviceharbor-tests-\(UUID().uuidString)", isDirectory: true)

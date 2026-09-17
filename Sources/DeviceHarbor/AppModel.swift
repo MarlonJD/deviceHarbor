@@ -246,6 +246,23 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func testRemoteAddress(address: String, port: UInt16) {
+        statusMessage = "Testing \(address):\(port)…"
+        let tester = TCPReachabilityTester()
+        Task { [weak self] in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                tester.test(address: address, port: port)
+            }.value
+            guard let self else { return }
+            switch outcome {
+            case .reachable:
+                statusMessage = "Reachable: \(address):\(port)."
+            case .failed(let message):
+                statusMessage = message
+            }
+        }
+    }
+
     func captureLocalBonjourServices(
         duration: TimeInterval = 5,
         completion: @escaping @MainActor (BonjourCaptureOutcome) -> Void
